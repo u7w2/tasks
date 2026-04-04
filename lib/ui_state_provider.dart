@@ -1,15 +1,29 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'graph_provider.dart';
 
 class UIStateProvider extends ChangeNotifier {
-  bool _isEditMode = false;
-  bool get isEditMode => _isEditMode;
-
   final Set<CategoryNode> _selectedNodes = {};
   Set<CategoryNode> get selectedNodes => _selectedNodes;
 
   CategoryNode? _editingNode;
   CategoryNode? get editingNode => _editingNode;
+
+  final Set<String> _errorNodes = {};
+  bool isErrorNode(CategoryNode node) => _errorNodes.contains(node.uuid);
+
+  void flashError(List<CategoryNode> nodes) {
+    for (var node in nodes) {
+      _errorNodes.add(node.uuid);
+    }
+    notifyListeners();
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      for (var node in nodes) {
+        _errorNodes.remove(node.uuid);
+      }
+      notifyListeners();
+    });
+  }
 
   void startEditing(CategoryNode node) {
     _editingNode = node;
@@ -21,7 +35,6 @@ class UIStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Map<String, int>? _snapshotDepths;
   final Map<String, GlobalKey> _nodeKeys = {};
 
   GlobalKey getNodeKey(String uuid) {
@@ -29,31 +42,7 @@ class UIStateProvider extends ChangeNotifier {
     return _nodeKeys[uuid]!;
   }
 
-  void setEditMode(bool value, GraphProvider graph) {
-    if (_isEditMode == value) return;
-    _isEditMode = value;
-    if (_isEditMode) {
-      // Freeze columns by taking a snapshot of all depths
-      _snapshotDepths = {};
-      for (var node in graph.getAllNodes()) {
-        _snapshotDepths![node.uuid] = node.depth ?? 0;
-      }
-    } else {
-      // Unfreeze
-      _snapshotDepths = null;
-      _selectedNodes.clear();
-    }
-    notifyListeners();
-  }
-
-  void toggleEditMode(GraphProvider graph) {
-    setEditMode(!_isEditMode, graph);
-  }
-
   int getDisplayDepth(CategoryNode node) {
-    if (_isEditMode && _snapshotDepths != null) {
-      return _snapshotDepths![node.uuid] ?? (node.depth ?? 0);
-    }
     return node.depth ?? 0;
   }
 
@@ -71,19 +60,55 @@ class UIStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void longPressSelect(CategoryNode node) {
-    _selectPathRecursive(node);
+  void ensureSelected(CategoryNode node) {
+    if (!_selectedNodes.contains(node)) {
+      _selectedNodes.add(node);
+      notifyListeners();
+    }
+  }
+
+  void doubleTapSelect(CategoryNode node) {
+    if (!_selectedNodes.contains(node)) {
+      _selectedNodes.add(node);
+    }
+    _addAncestors(node);
+    _addDescendants(node);
     notifyListeners();
   }
 
-  void _selectPathRecursive(CategoryNode node) {
-    if (_selectedNodes.contains(node)) return; 
+  void tripleTapSelect(CategoryNode node) {
+    Set<CategoryNode> visited = {};
+    _floodFillRecursive(node, visited);
+    notifyListeners();
+  }
+
+  void _floodFillRecursive(CategoryNode node, Set<CategoryNode> visited) {
+    if (visited.contains(node)) return; 
+    visited.add(node);
     _selectedNodes.add(node);
     for (var parent in node.parents) {
-      _selectPathRecursive(parent);
+      _floodFillRecursive(parent, visited);
     }
     for (var child in node.children) {
-      _selectPathRecursive(child);
+      _floodFillRecursive(child, visited);
+    }
+  }
+
+  void _addAncestors(CategoryNode node) {
+    for (var parent in node.parents) {
+      if (!_selectedNodes.contains(parent)) {
+        _selectedNodes.add(parent);
+        _addAncestors(parent);
+      }
+    }
+  }
+
+  void _addDescendants(CategoryNode node) {
+    for (var child in node.children) {
+      if (!_selectedNodes.contains(child)) {
+        _selectedNodes.add(child);
+        _addDescendants(child);
+      }
     }
   }
 

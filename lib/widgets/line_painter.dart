@@ -42,7 +42,7 @@ class LinePainter extends CustomPainter {
         Offset childPos = childBox.localToGlobal(childBox.size.centerLeft(Offset.zero), ancestor: overlayBox);
         Offset parentPos = parentBox.localToGlobal(parentBox.size.centerRight(Offset.zero), ancestor: overlayBox);
 
-        bool isHighlighted = uiState.isSelected(child) || uiState.isSelected(parent);
+        bool isHighlighted = uiState.isSelected(child) && uiState.isSelected(parent);
         
         var path = Path();
         path.moveTo(parentPos.dx, parentPos.dy);

@@ -67,22 +67,14 @@ class TasksScreen extends StatelessWidget {
               },
             ),
           const SizedBox(width: 16),
-          Row(
-            children: [
-              Text(uiState.isEditMode ? "Edit Mode" : "View Mode"),
-              Switch(
-                value: uiState.isEditMode,
-                onChanged: (_) => context.read<UIStateProvider>().toggleEditMode(graph),
-              ),
-            ],
-          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
         onPressed: () {
           var newNode = graph.addNode("New Task");
-          uiState.setEditMode(true, graph);
+          uiState.clearSelection();
+          uiState.toggleSelection(newNode);
           uiState.startEditing(newNode);
         },
       ),
