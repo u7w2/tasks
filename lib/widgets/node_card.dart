@@ -139,7 +139,6 @@ class _NodeCardState extends State<NodeCard> {
               graph.addLink(targetNode, draggedNode);
            }
         }
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Links updated!')));
       },
       builder: (context, candidateData, rejectedData) {
         Widget cardWrap = Container(

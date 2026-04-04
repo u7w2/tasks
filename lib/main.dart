@@ -47,7 +47,7 @@ class TasksScreen extends StatelessWidget {
       },
       child: Scaffold(
         appBar: AppBar(
-        title: const Text("Tasks"),
+        title: const _SearchBar(),
         actions: [
           if (uiState.selectedNodes.length == 1)
             IconButton(
@@ -132,8 +132,12 @@ class _GraphBodyState extends State<GraphBody> {
     return LayoutBuilder(
       builder: (context, constraints) {
         double screenWidth = constraints.maxWidth;
-        double scrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
         double defaultColWidth = 120.0;
+        int extraCols = sortedDepths.length > 1 ? sortedDepths.length - 1 : 0;
+        double calculatedMaxScroll = extraCols * defaultColWidth;
+        
+        double rawScrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+        double scrollOffset = rawScrollOffset.clamp(0.0, calculatedMaxScroll);
         
         // Focus mode handled below dynamically
 
@@ -190,6 +194,61 @@ class _GraphBodyState extends State<GraphBody> {
           ],
         ));
       }
+    );
+  }
+}
+
+class _SearchBar extends StatefulWidget {
+  const _SearchBar();
+
+  @override
+  State<_SearchBar> createState() => _SearchBarState();
+}
+
+class _SearchBarState extends State<_SearchBar> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String query) {
+    var uiState = context.read<UIStateProvider>();
+    var graph = context.read<GraphProvider>();
+    uiState.searchNodes(query, graph);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      decoration: InputDecoration(
+        hintText: "Search nodes (Regex)...",
+        border: InputBorder.none,
+        icon: const Icon(Icons.search, color: Colors.grey),
+        suffixIcon: _controller.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _controller.clear();
+                  _onChanged("");
+                  FocusScope.of(context).unfocus();
+                },
+              )
+            : null,
+      ),
+      onChanged: _onChanged,
+      style: const TextStyle(fontSize: 16),
     );
   }
 }

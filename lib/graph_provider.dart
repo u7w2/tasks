@@ -144,8 +144,10 @@ class GraphProvider extends ChangeNotifier {
 
   void removeNode(CategoryNode node) {
     // 1. Unlink node from its parents.
-    if (node.parents.isEmpty) { _rootNodes.remove(node); }
-    else { for (CategoryNode parent in node.parents) { parent.children.remove(node); } }
+    _rootNodes.remove(node);
+    for (CategoryNode parent in node.parents) {
+      parent.children.remove(node);
+    }
 
     // 2. Unlink node from its children
     List<CategoryNode> affectedChildren = List.from(node.children);
@@ -178,6 +180,7 @@ class GraphProvider extends ChangeNotifier {
   void addLink(CategoryNode parent, CategoryNode child) {
     parent.children.add(child);
     child.parents.add(parent);
+    _rootNodes.remove(child);
     updateDepths([child]);
     saveGraph();
   }
@@ -185,6 +188,9 @@ class GraphProvider extends ChangeNotifier {
   void removeLink(CategoryNode parent, CategoryNode child) {
     parent.children.remove(child);
     child.parents.remove(parent);
+    if (child.parents.isEmpty) {
+      _rootNodes.add(child);
+    }
     updateDepths([child]);
     saveGraph();
   }

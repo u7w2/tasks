@@ -60,6 +60,23 @@ class UIStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void searchNodes(String query, GraphProvider graph) {
+    _selectedNodes.clear();
+    if (query.isNotEmpty) {
+      try {
+        final regex = RegExp(query, caseSensitive: false);
+        for (var node in graph.getAllNodes()) {
+          if (regex.hasMatch(node.name)) {
+            _selectedNodes.add(node);
+          }
+        }
+      } catch (e) {
+        // Ignore invalid regex until user completes typing
+      }
+    }
+    notifyListeners();
+  }
+
   void ensureSelected(CategoryNode node) {
     if (!_selectedNodes.contains(node)) {
       _selectedNodes.add(node);
@@ -71,8 +88,8 @@ class UIStateProvider extends ChangeNotifier {
     if (!_selectedNodes.contains(node)) {
       _selectedNodes.add(node);
     }
-    _addAncestors(node);
-    _addDescendants(node);
+    _addAncestors(node, {});
+    _addDescendants(node, {});
     notifyListeners();
   }
 
@@ -94,20 +111,22 @@ class UIStateProvider extends ChangeNotifier {
     }
   }
 
-  void _addAncestors(CategoryNode node) {
+  void _addAncestors(CategoryNode node, Set<CategoryNode> visited) {
     for (var parent in node.parents) {
-      if (!_selectedNodes.contains(parent)) {
+      if (!visited.contains(parent)) {
+        visited.add(parent);
         _selectedNodes.add(parent);
-        _addAncestors(parent);
+        _addAncestors(parent, visited);
       }
     }
   }
 
-  void _addDescendants(CategoryNode node) {
+  void _addDescendants(CategoryNode node, Set<CategoryNode> visited) {
     for (var child in node.children) {
-      if (!_selectedNodes.contains(child)) {
+      if (!visited.contains(child)) {
+        visited.add(child);
         _selectedNodes.add(child);
-        _addDescendants(child);
+        _addDescendants(child, visited);
       }
     }
   }
