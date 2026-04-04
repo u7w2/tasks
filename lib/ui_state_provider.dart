@@ -60,6 +60,37 @@ class UIStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isDragging = false;
+  bool get isDragging => _isDragging;
+
+  final Set<CategoryNode> _invalidDragTargets = {};
+  Set<CategoryNode> get invalidDragTargets => _invalidDragTargets;
+
+  void startDragging(List<CategoryNode> draggedNodes, GraphProvider graph) {
+    _isDragging = true;
+    _invalidDragTargets.clear();
+    
+    for (var candidate in graph.getAllNodes()) {
+      bool invalid = false;
+      for (var dragged in draggedNodes) {
+        if (graph.wouldCreateCycle(candidate, dragged)) {
+          invalid = true;
+          break;
+        }
+      }
+      if (invalid) {
+        _invalidDragTargets.add(candidate);
+      }
+    }
+    notifyListeners();
+  }
+
+  void stopDragging() {
+    _isDragging = false;
+    _invalidDragTargets.clear();
+    notifyListeners();
+  }
+
   void searchNodes(String query, GraphProvider graph) {
     _selectedNodes.clear();
     if (query.isNotEmpty) {

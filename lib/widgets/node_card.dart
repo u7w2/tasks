@@ -55,10 +55,13 @@ class _NodeCardState extends State<NodeCard> {
       CategoryNode targetNode = overrideNode ?? widget.node;
       bool isLocalSelected = uiState.isSelected(targetNode);
       bool isLocalError = uiState.isErrorNode(targetNode);
+      bool isInvalidTarget = uiState.isDragging && uiState.invalidDragTargets.contains(targetNode);
       var localKey = uiState.getNodeKey(targetNode.uuid);
 
-      return Card(
-        key: useKey ? localKey : null,
+      return Opacity(
+        opacity: isInvalidTarget ? 0.3 : 1.0,
+        child: Card(
+          key: useKey ? localKey : null,
         margin: EdgeInsets.zero,
         shape: isLocalError 
             ? RoundedRectangleBorder(
@@ -95,13 +98,13 @@ class _NodeCardState extends State<NodeCard> {
             ),
           ),
         ),
-      );
+      ));
     }
 
     return DragTarget<List<CategoryNode>>(
       onWillAcceptWithDetails: (details) {
-        // Drop ignores Action if hovering over another selected node
         if (uiState.isSelected(widget.node)) return false;
+        if (uiState.invalidDragTargets.contains(widget.node)) return false;
         return true;
       },
       onAcceptWithDetails: (details) {
@@ -166,6 +169,12 @@ class _NodeCardState extends State<NodeCard> {
 
         return Draggable<List<CategoryNode>>(
           data: draggedData,
+          onDragStarted: () {
+             var graph = context.read<GraphProvider>();
+             context.read<UIStateProvider>().startDragging(draggedData, graph);
+          },
+          onDragEnd: (details) => context.read<UIStateProvider>().stopDragging(),
+          onDraggableCanceled: (velocity, offset) => context.read<UIStateProvider>().stopDragging(),
           feedback: Material(
             color: Colors.transparent,
             child: SizedBox(
