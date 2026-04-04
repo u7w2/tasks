@@ -21,7 +21,9 @@ class TasksApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: "Tasks",
-        theme: ThemeData.dark(),
+        theme: ThemeData.light(),
+        darkTheme: ThemeData.dark(),
+        themeMode: ThemeMode.system,
         home: const TasksScreen(),
       ),
     );
