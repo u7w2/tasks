@@ -98,17 +98,29 @@ class _TasksScreenState extends State<TasksScreen> {
           );
           uiState.clearSelection();
           uiState.toggleSelection(newNode);
-          uiState.startEditing(newNode);
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
+            bool needsScroll = false;
             if (_scrollController.hasClients) {
               int targetDepth = newNode.depth ?? 0;
               double targetScroll = (targetDepth * 120.0).clamp(0.0, _scrollController.position.maxScrollExtent);
-              _scrollController.animateTo(
-                targetScroll,
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic
-              );
+              needsScroll = (targetScroll - _scrollController.offset).abs() > 1.0;
+              if (needsScroll) {
+                _scrollController.animateTo(
+                  targetScroll,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+            }
+
+            if (needsScroll) {
+              // Delay editing until scroll settles so focus-scroll can't override
+              Future.delayed(const Duration(milliseconds: 320), () {
+                uiState.startEditing(newNode);
+              });
+            } else {
+              uiState.startEditing(newNode);
             }
           });
         },
