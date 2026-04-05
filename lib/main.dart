@@ -38,13 +38,14 @@ class TasksScreen extends StatelessWidget {
     var graph = context.watch<GraphProvider>();
     var uiState = context.watch<UIStateProvider>();
 
-    bool hasActiveState = uiState.selectedNodes.isNotEmpty || uiState.editingNode != null;
+    bool hasActiveState = uiState.selectedNodes.isNotEmpty || uiState.editingNode != null || uiState.searchQuery.isNotEmpty;
 
     return PopScope(
       canPop: !hasActiveState,
       onPopInvokedWithResult: (didPop, dynamic result) {
         if (didPop) return;
         uiState.clearSelection();
+        if (uiState.searchQuery.isNotEmpty) uiState.clearSearch();
         if (uiState.editingNode != null) uiState.stopEditing();
       },
       child: Scaffold(
@@ -216,6 +217,16 @@ class _SearchBarState extends State<_SearchBar> {
     _controller.addListener(() {
       setState(() {});
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    var uiState = context.watch<UIStateProvider>();
+    if (uiState.searchQuery.isEmpty && _controller.text.isNotEmpty) {
+      _controller.clear();
+      FocusScope.of(context).unfocus();
+    }
   }
 
   @override

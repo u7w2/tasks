@@ -109,7 +109,11 @@ class UIStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  String _searchQuery = "";
+  String get searchQuery => _searchQuery;
+
   void searchNodes(String query, GraphProvider graph) {
+    _searchQuery = query;
     _selectedNodes.clear();
     if (query.isNotEmpty) {
       try {
@@ -123,6 +127,11 @@ class UIStateProvider extends ChangeNotifier {
         // Ignore invalid regex until user completes typing
       }
     }
+    notifyListeners();
+  }
+
+  void clearSearch() {
+    _searchQuery = "";
     notifyListeners();
   }
 
