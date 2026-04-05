@@ -107,7 +107,7 @@ class _TasksScreenState extends State<TasksScreen> {
               _scrollController.animateTo(
                 targetScroll,
                 duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
+                curve: Curves.easeOutCubic
               );
             }
           });

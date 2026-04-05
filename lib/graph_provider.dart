@@ -127,14 +127,14 @@ class GraphProvider extends ChangeNotifier {
     final CategoryNode node = CategoryNode(
       name,
       description: description,
-      children: children,
       parents: parents,
+      children: children,
     );
     if (parents == null) {
       _rootNodes.add(node);
     } else {
       for (CategoryNode parent in parents) {
-        parent.children.add(node);
+        addLink(parent, node);
       }
     }
     updateDepths([node]);
@@ -178,8 +178,8 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void addLink(CategoryNode parent, CategoryNode child) {
-    parent.children.add(child);
-    child.parents.add(parent);
+    if (!parent.children.contains(child)) { parent.children.add(child); }
+    if (!child.parents.contains(parent)) { child.parents.add(parent); }
     _rootNodes.remove(child);
     updateDepths([child]);
     saveGraph();
@@ -188,9 +188,7 @@ class GraphProvider extends ChangeNotifier {
   void removeLink(CategoryNode parent, CategoryNode child) {
     parent.children.remove(child);
     child.parents.remove(parent);
-    if (child.parents.isEmpty) {
-      _rootNodes.add(child);
-    }
+    if (child.parents.isEmpty) { _rootNodes.add(child); }
     updateDepths([child]);
     saveGraph();
   }
