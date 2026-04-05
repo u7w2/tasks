@@ -13,15 +13,11 @@ class UIStateProvider extends ChangeNotifier {
   bool isErrorNode(CategoryNode node) => _errorNodes.contains(node.uuid);
 
   void flashError(List<CategoryNode> nodes) {
-    for (var node in nodes) {
-      _errorNodes.add(node.uuid);
-    }
+    for (var node in nodes) { _errorNodes.add(node.uuid); }
     notifyListeners();
     Future.delayed(const Duration(milliseconds: 1500), () {
-      for (var node in nodes) {
-        _errorNodes.remove(node.uuid);
-      }
-      notifyListeners();
+      for (var node in nodes) { _errorNodes.remove(node.uuid); }
+      if (hasListeners) notifyListeners();
     });
   }
 
