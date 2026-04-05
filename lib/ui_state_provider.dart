@@ -128,6 +128,7 @@ class UIStateProvider extends ChangeNotifier {
 
   void clearSearch() {
     _searchQuery = "";
+    _selectedNodes.clear();
     notifyListeners();
   }
 
