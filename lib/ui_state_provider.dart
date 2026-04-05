@@ -21,9 +21,6 @@ class UIStateProvider extends ChangeNotifier {
     });
   }
 
-  void scrollToNode(CategoryNode node) {
-
-  }
 
   void startEditing(CategoryNode node) {
     _editingNode = node;
