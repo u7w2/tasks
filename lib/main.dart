@@ -127,17 +127,18 @@ class GraphBody extends StatefulWidget {
 }
 
 class _GraphBodyState extends State<GraphBody> {
+  late VoidCallback _onScroll;
+
   @override
   void initState() {
     super.initState();
-    widget.scrollController.addListener(() {
-      setState(() {});
-    });
+    _onScroll = () => setState(() {});
+    widget.scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    widget.scrollController.removeListener(() {});
+    widget.scrollController.removeListener(_onScroll);
     super.dispose();
   }
 
