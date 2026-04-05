@@ -127,14 +127,18 @@ class GraphBody extends StatefulWidget {
 }
 
 class _GraphBodyState extends State<GraphBody> {
-  bool _needsRepaint = true;
-
   @override
   void initState() {
     super.initState();
     widget.scrollController.addListener(() {
       setState(() {});
     });
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController.removeListener(() {});
+    super.dispose();
   }
 
   @override
@@ -150,13 +154,11 @@ class _GraphBodyState extends State<GraphBody> {
     
     List<int> sortedDepths = depthMap.keys.toList()..sort();
 
-    if (_needsRepaint) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() { _needsRepaint = false; });
-        }
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
 
     return LayoutBuilder(
       builder: (context, constraints) {

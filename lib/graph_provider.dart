@@ -112,7 +112,7 @@ class GraphProvider extends ChangeNotifier {
         }
       }
       
-      updateAllDepths();
+      updateDepths(_rootNodes);
     } catch (e) {
       debugPrint("Failed to load graph: $e");
     }
@@ -206,7 +206,7 @@ class GraphProvider extends ChangeNotifier {
   int _computeDepth(CategoryNode node, Set<CategoryNode> visiting) {
     if (node.depth != null) return node.depth!;
     
-    if (visiting.contains(node)) return 0; // Prevent infinite loops
+    if (visiting.contains(node)) return 0;
     if (node.parents.isEmpty) {
       node.depth = 0;
       return 0;
