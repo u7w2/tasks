@@ -158,10 +158,11 @@ class GraphProvider extends ChangeNotifier {
       }
     }
 
+    updateDepths(node.parents + node.children);
+
     node.children.clear();
     node.parents.clear();
 
-    updateDepths(node.parents + node.children);
     saveGraph();
   }
 
