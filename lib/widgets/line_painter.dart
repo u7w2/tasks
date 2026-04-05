@@ -71,5 +71,7 @@ class LinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant LinePainter oldDelegate) => true; 
+  bool shouldRepaint(covariant LinePainter oldDelegate) {
+    return graph != oldDelegate.graph || uiState != oldDelegate.uiState;
+  }
 }
