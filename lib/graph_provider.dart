@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:collection';
 
 class CategoryNode {
   static const _uuidGenerator = Uuid();
@@ -143,44 +144,31 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void removeNode(CategoryNode node) {
-    // 1. Unlink node from its parents.
     _rootNodes.remove(node);
-    for (CategoryNode parent in node.parents) {
-      parent.children.remove(node);
-    }
+    for (CategoryNode parent in node.parents) { removeLink(parent, node); }
+    for (CategoryNode child in node.children) { removeLink(node, child); }
 
-    // 2. Unlink node from its children
-    List<CategoryNode> affectedChildren = List.from(node.children);
-    for (CategoryNode child in node.children) { child.parents.remove(node); }
-    
-    // 3. Connect parents directly to children (inheritance)
     for (CategoryNode parent in node.parents) {
-      for (CategoryNode child in affectedChildren) {
-        if (!parent.children.contains(child)) parent.children.add(child);
-        if (!child.parents.contains(parent)) child.parents.add(parent);
-      }
+      for (CategoryNode child in node.children) { addLink(parent, child); }
     }
     
-    // 4. Promote stranded children to root nodes if necessary
     if (node.parents.isEmpty) {
-      for (CategoryNode child in affectedChildren) {
-        if (child.parents.isEmpty && !_rootNodes.contains(child)) {
-          _rootNodes.add(child);
-        }
+      for (CategoryNode child in node.children) {
+        if (child.parents.isEmpty && !_rootNodes.contains(child)) { _rootNodes.add(child); }
       }
     }
 
     node.children.clear();
     node.parents.clear();
 
-    updateDepths(affectedChildren);
+    updateDepths(node.parents + node.children);
     saveGraph();
   }
 
   void addLink(CategoryNode parent, CategoryNode child) {
     if (!parent.children.contains(child)) { parent.children.add(child); }
     if (!child.parents.contains(parent)) { child.parents.add(parent); }
-    _rootNodes.remove(child);
+    child.parents.isEmpty ? _rootNodes.add(child) : _rootNodes.remove(child);
     updateDepths([child]);
     saveGraph();
   }
@@ -202,48 +190,15 @@ class GraphProvider extends ChangeNotifier {
 
   void updateDepths(List<CategoryNode> nodes) {
     Set<CategoryNode> descendants = {};
-    List<CategoryNode> queue = List.from(nodes);
-    
-    int i = 0;
-    while (i < queue.length) {
-      CategoryNode node = queue[i++];
-      if (descendants.add(node)) {
-        queue.addAll(node.children);
-      }
+    final queue = Queue<CategoryNode>.from(nodes);
+
+    while (queue.isNotEmpty) {
+      final node = queue.removeFirst();
+      if (descendants.add(node)) { queue.addAll(node.children); }
     }
 
-    for (CategoryNode node in descendants) {
-      node.depth = null;
-    }
-
-    for (CategoryNode node in descendants) {
-      _computeDepth(node, {});
-    }
-
-    notifyListeners();
-  }
-
-  void updateAllDepths() {
-    Set<CategoryNode> allNodes = {};
-    List<CategoryNode> queue = List.from(_rootNodes);
-    
-    int i = 0;
-    while (i < queue.length) {
-      CategoryNode node = queue[i++];
-      if (allNodes.add(node)) {
-        queue.addAll(node.children);
-      }
-    }
-
-    // Clear computed depths first
-    for (CategoryNode node in allNodes) {
-      node.depth = null;
-    }
-
-    // Recompute everyone's depth
-    for (CategoryNode node in allNodes) {
-      _computeDepth(node, {});
-    }
+    for (CategoryNode node in descendants) { node.depth = null; }
+    for (CategoryNode node in descendants) { _computeDepth(node, {}); }
 
     notifyListeners();
   }
