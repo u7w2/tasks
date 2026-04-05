@@ -179,7 +179,12 @@ class _GraphBodyState extends State<GraphBody> {
         
         // Focus mode handled below dynamically
 
-        return GestureDetector(
+        return NotificationListener<ScrollNotification>(
+          onNotification: (_) {
+            setState(() {});
+            return false; // Let the notification continue bubbling
+          },
+          child: GestureDetector(
           onTap: () {
             uiState.clearSelection();
             if (uiState.editingNode != null) uiState.stopEditing();
@@ -226,11 +231,11 @@ class _GraphBodyState extends State<GraphBody> {
                       ],
                     ),
                   );
-                }).toList(),
+                 }).toList(),
               ),
             ),
           ],
-        ));
+        )));  // Stack, GestureDetector, NotificationListener
       }
     );
   }
