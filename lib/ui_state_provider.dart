@@ -63,6 +63,23 @@ class UIStateProvider extends ChangeNotifier {
   bool _isDragging = false;
   bool get isDragging => _isDragging;
 
+  CategoryNode? _hoverTarget;
+  CategoryNode? get hoverTarget => _hoverTarget;
+
+  void setHoverTarget(CategoryNode? target) {
+    if (_hoverTarget != target) {
+      _hoverTarget = target;
+      notifyListeners();
+    }
+  }
+
+  void clearHoverTarget() {
+    if (_hoverTarget != null) {
+      _hoverTarget = null;
+      notifyListeners();
+    }
+  }
+
   final Set<CategoryNode> _invalidDragTargets = {};
   Set<CategoryNode> get invalidDragTargets => _invalidDragTargets;
 

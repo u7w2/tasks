@@ -105,8 +105,10 @@ class _NodeCardState extends State<NodeCard> {
       onWillAcceptWithDetails: (details) {
         if (uiState.isSelected(widget.node)) return false;
         if (uiState.invalidDragTargets.contains(widget.node)) return false;
+        uiState.setHoverTarget(widget.node);
         return true;
       },
+      onLeave: (data) => uiState.clearHoverTarget(),
       onAcceptWithDetails: (details) {
         var graph = context.read<GraphProvider>();
         var uiState = context.read<UIStateProvider>();
@@ -143,13 +145,27 @@ class _NodeCardState extends State<NodeCard> {
               graph.addLink(targetNode, draggedNode);
            }
         }
+        uiState.clearHoverTarget();
       },
       builder: (context, candidateData, rejectedData) {
+        bool isHovered = candidateData.isNotEmpty;
+        Color? borderColor;
+        if (isHovered) {
+          bool isDeletion = false;
+          for (var draggedNode in candidateData.first!) {
+            if (widget.node.children.contains(draggedNode) || draggedNode.children.contains(widget.node)) {
+              isDeletion = true;
+              break;
+            }
+          }
+          borderColor = isDeletion ? Colors.red : Colors.green;
+        }
+
         Widget cardWrap = Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            border: candidateData.isNotEmpty
-                ? Border.all(color: Colors.green, width: 3)
+            border: borderColor != null
+                ? Border.all(color: borderColor, width: 3)
                 : null,
           ),
           child: buildCard(useKey: true),

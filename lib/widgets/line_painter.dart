@@ -23,6 +23,11 @@ class LinePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4.0;
 
+    var deletePaint = Paint()
+      ..color = Colors.red
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0;
+
     RenderBox? overlayBox = context.findRenderObject() as RenderBox?;
     if (overlayBox == null) return;
 
@@ -44,6 +49,14 @@ class LinePainter extends CustomPainter {
 
         bool isHighlighted = uiState.isSelected(child) && uiState.isSelected(parent);
         
+        bool isDeletionHover = false;
+        if (uiState.hoverTarget != null && uiState.isDragging) {
+          if ((child == uiState.hoverTarget && uiState.isSelected(parent)) ||
+              (parent == uiState.hoverTarget && uiState.isSelected(child))) {
+            isDeletionHover = true;
+          }
+        }
+
         var path = Path();
         path.moveTo(parentPos.dx, parentPos.dy);
         path.cubicTo(
@@ -52,7 +65,7 @@ class LinePainter extends CustomPainter {
           childPos.dx, childPos.dy,
         );
 
-        canvas.drawPath(path, isHighlighted ? highlightPaint : paint);
+        canvas.drawPath(path, isDeletionHover ? deletePaint : (isHighlighted ? highlightPaint : paint));
       }
     }
   }
