@@ -111,7 +111,7 @@ class _NodeCardState extends State<NodeCard> {
       onLeave: (data) => uiState.clearHoverTarget(),
       onAcceptWithDetails: (details) {
         var graph = context.read<GraphProvider>();
-        var uiState = context.read<UIStateProvider>();
+        var uiState = context.read<UIStateProvider>(); // change variable name? Shadowing uiState variable under Widget build()
         List<CategoryNode> draggedNodes = details.data;
         CategoryNode targetNode = widget.node;
 

@@ -26,7 +26,7 @@ class UIStateProvider extends ChangeNotifier {
   }
 
   void scrollToNode(CategoryNode node) {
-    
+
   }
 
   void startEditing(CategoryNode node) {
@@ -44,10 +44,6 @@ class UIStateProvider extends ChangeNotifier {
   GlobalKey getNodeKey(String uuid) {
     _nodeKeys.putIfAbsent(uuid, () => GlobalKey());
     return _nodeKeys[uuid]!;
-  }
-
-  int getDisplayDepth(CategoryNode node) {
-    return node.depth ?? 0;
   }
 
   void toggleSelection(CategoryNode node) {

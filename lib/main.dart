@@ -102,7 +102,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (_scrollController.hasClients) {
-              int targetDepth = uiState.getDisplayDepth(newNode);
+              int targetDepth = newNode.depth ?? 0;
               double targetScroll = (targetDepth * 120.0).clamp(0.0, _scrollController.position.maxScrollExtent);
               _scrollController.animateTo(
                 targetScroll,
@@ -148,7 +148,7 @@ class _GraphBodyState extends State<GraphBody> {
 
     Map<int, List<CategoryNode>> depthMap = {};
     for (var node in graph.getAllNodes()) {
-      int depth = uiState.getDisplayDepth(node);
+      int depth = node.depth ?? 0;
       depthMap.putIfAbsent(depth, () => []).add(node);
     }
     
