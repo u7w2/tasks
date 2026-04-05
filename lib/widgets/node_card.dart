@@ -115,7 +115,8 @@ class _NodeCardState extends State<NodeCard> {
 
         bool hasCycle = false;
         for (var draggedNode in draggedNodes) {
-          if (graph.wouldCreateCycle(targetNode, draggedNode)) {
+          bool hasDirectLink = targetNode.children.contains(draggedNode) || draggedNode.children.contains(targetNode);
+          if (!hasDirectLink && graph.wouldCreateCycle(targetNode, draggedNode)) {
             hasCycle = true;
             break;
           }

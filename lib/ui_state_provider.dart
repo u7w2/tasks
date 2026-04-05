@@ -73,7 +73,8 @@ class UIStateProvider extends ChangeNotifier {
     for (var candidate in graph.getAllNodes()) {
       bool invalid = false;
       for (var dragged in draggedNodes) {
-        if (graph.wouldCreateCycle(candidate, dragged)) {
+        bool hasDirectLink = candidate.children.contains(dragged) || dragged.children.contains(candidate);
+        if (!hasDirectLink && graph.wouldCreateCycle(candidate, dragged)) {
           invalid = true;
           break;
         }
