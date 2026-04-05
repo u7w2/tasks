@@ -30,8 +30,21 @@ class TasksApp extends StatelessWidget {
   }
 }
 
-class TasksScreen extends StatelessWidget {
+class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
+
+  @override
+  State<TasksScreen> createState() => _TasksScreenState();
+}
+
+class _TasksScreenState extends State<TasksScreen> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,40 +88,53 @@ class TasksScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
         onPressed: () {
-          var newNode = graph.addNode("New Task");
+          List<CategoryNode>? parentNodes;
+          if (uiState.selectedNodes.isNotEmpty) {
+            parentNodes = uiState.selectedNodes.toList();
+          }
+          var newNode = graph.addNode(
+            "New Task",
+            parents: parentNodes,
+          );
           uiState.clearSelection();
           uiState.toggleSelection(newNode);
           uiState.startEditing(newNode);
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              int targetDepth = uiState.getDisplayDepth(newNode);
+              double targetScroll = (targetDepth * 120.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+              _scrollController.animateTo(
+                targetScroll,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+              );
+            }
+          });
         },
       ),
-      body: GraphBody(),
+      body: GraphBody(scrollController: _scrollController),
     ));
   }
 }
 
 class GraphBody extends StatefulWidget {
-  const GraphBody({super.key});
+  final ScrollController scrollController;
+  const GraphBody({super.key, required this.scrollController});
 
   @override
   State<GraphBody> createState() => _GraphBodyState();
 }
 
 class _GraphBodyState extends State<GraphBody> {
-  final ScrollController _scrollController = ScrollController();
   bool _needsRepaint = true;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(() {
+    widget.scrollController.addListener(() {
       setState(() {});
     });
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
   }
 
   @override
@@ -139,7 +165,7 @@ class _GraphBodyState extends State<GraphBody> {
         int extraCols = sortedDepths.length > 1 ? sortedDepths.length - 1 : 0;
         double calculatedMaxScroll = extraCols * defaultColWidth;
         
-        double rawScrollOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+        double rawScrollOffset = widget.scrollController.hasClients ? widget.scrollController.offset : 0.0;
         double scrollOffset = rawScrollOffset.clamp(0.0, calculatedMaxScroll);
         
         // Focus mode handled below dynamically
@@ -157,7 +183,7 @@ class _GraphBodyState extends State<GraphBody> {
               painter: LinePainter(graph, uiState, context),
             ),
             SingleChildScrollView(
-              controller: _scrollController,
+              controller: widget.scrollController,
               scrollDirection: Axis.horizontal,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
