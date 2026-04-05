@@ -155,12 +155,6 @@ class _GraphBodyState extends State<GraphBody> {
     
     List<int> sortedDepths = depthMap.keys.toList()..sort();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
-
     return LayoutBuilder(
       builder: (context, constraints) {
         double screenWidth = constraints.maxWidth;
