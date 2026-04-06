@@ -74,7 +74,6 @@ class _TasksScreenState extends State<TasksScreen> {
             IconButton(
               icon: const Icon(Icons.delete),
               onPressed: () {
-                // To avoid concurrent modification issues while deleting
                 var nodesToDelete = uiState.selectedNodes;
                 graph.removeNodes(nodesToDelete);
                 uiState.clearSelection();
@@ -113,7 +112,6 @@ class _TasksScreenState extends State<TasksScreen> {
             }
 
             if (needsScroll) {
-              // Delay editing until scroll settles so focus-scroll can't override
               Future.delayed(const Duration(milliseconds: 320), () {
                 uiState.startEditing(newNode);
               });
@@ -174,13 +172,11 @@ class _GraphBodyState extends State<GraphBody> {
         
         double rawScrollOffset = widget.scrollController.hasClients ? widget.scrollController.offset : 0.0;
         double scrollOffset = rawScrollOffset.clamp(0.0, calculatedMaxScroll);
-        
-        // Focus mode handled below dynamically
 
         return NotificationListener<ScrollNotification>(
           onNotification: (_) {
             setState(() {});
-            return false; // Let the notification continue bubbling
+            return false;
           },
           child: GestureDetector(
           onTap: () {
