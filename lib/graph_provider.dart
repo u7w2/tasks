@@ -8,8 +8,8 @@ class CategoryNode {
   static const _uuidGenerator = Uuid();
   final String uuid;
 
-  final List<CategoryNode> children;
-  final List<CategoryNode> parents;
+  final Set<CategoryNode> children;
+  final Set<CategoryNode> parents;
 
   String name;
   String? description;
@@ -20,20 +20,20 @@ class CategoryNode {
     this.name, {
     this.description,
     String? uuid,
-    List<CategoryNode>? children,
-    List<CategoryNode>? parents,
+    Set<CategoryNode>? children,
+    Set<CategoryNode>? parents,
     int? depth,
   }) : uuid = uuid ?? _uuidGenerator.v4(),
-       children = children ?? [],
-       parents = parents ?? [];
+       children = children ?? {},  
+       parents = parents ?? {};
 }
 
 class GraphProvider extends ChangeNotifier {
-  final List<CategoryNode> _rootNodes;
-  List<CategoryNode> get rootNodes => List.unmodifiable(_rootNodes);
+  final Set<CategoryNode> _rootNodes;
+  Set<CategoryNode> get rootNodes => Set.unmodifiable(_rootNodes);
 
-  GraphProvider({List<CategoryNode>? rootNodes})
-    : _rootNodes = rootNodes ?? [] {
+  GraphProvider({Set<CategoryNode>? rootNodes})
+    : _rootNodes = rootNodes ?? {} {
     for (CategoryNode node in _rootNodes) {
       node.parents.clear();
     }
@@ -121,8 +121,8 @@ class GraphProvider extends ChangeNotifier {
   CategoryNode addNode(
     String name, {
     String? description,
-    List<CategoryNode>? parents,
-    List<CategoryNode>? children,
+    Set<CategoryNode>? parents,
+    Set<CategoryNode>? children,
     int? index,
   }) {
     final CategoryNode node = CategoryNode(
@@ -138,34 +138,56 @@ class GraphProvider extends ChangeNotifier {
         addLink(parent, node);
       }
     }
-    updateDepths([node]);
+    updateDepths({node});
     saveGraph();
     return node;
   }
 
-  void removeNode(CategoryNode node) {
-    // Snapshot before any mutation — removing links modifies these lists mid-iteration
-    final parents = List<CategoryNode>.from(node.parents);
-    final children = List<CategoryNode>.from(node.children);
-
-    _rootNodes.remove(node);
-    for (var parent in parents) { removeLink(parent, node); }
-    for (var child in children) { removeLink(node, child); }
-
-    // Reconnect: inherit edges (bypass if both being deleted — caller handles that)
-    for (var parent in parents) {
-      for (var child in children) { addLink(parent, child); }
-    }
-
-    // Promote stranded children to root
-    if (parents.isEmpty) {
-      for (var child in children) {
-        if (child.parents.isEmpty && !_rootNodes.contains(child)) { _rootNodes.add(child); }
+  void removeNodes(Set<CategoryNode> nodes) {
+    if (nodes.isEmpty) return;
+    
+    final Set<CategoryNode> nodesToUpdate = {};
+    
+    for (var node in nodes) {
+      _rootNodes.remove(node);
+      
+      final parents = Set<CategoryNode>.from(node.parents);
+      final children = Set<CategoryNode>.from(node.children);
+      
+      for (var parent in parents) {
+        parent.children.remove(node);
       }
+      
+      for (var child in children) {
+        child.parents.remove(node);
+        if (!nodes.contains(child)) {
+          nodesToUpdate.add(child);
+          if (child.parents.isEmpty) {
+            _rootNodes.add(child);
+          }
+        }
+      }
+      
+      for (var parent in parents) {
+        if (nodes.contains(parent)) continue;
+        for (var child in children) {
+          if (nodes.contains(child)) continue;
+          
+          if (!parent.children.contains(child)) {
+            parent.children.add(child);
+            child.parents.add(parent);
+            _rootNodes.remove(child);
+            nodesToUpdate.add(child);
+          }
+        }
+      }
+      
+      // Clear relationships on the deleted node
+      node.parents.clear();
+      node.children.clear();
     }
-
-    // node.parents and node.children are now empty (removeLink already cleared them)
-    updateDepths(parents + children);
+    
+    updateDepths(nodesToUpdate.isEmpty ? _rootNodes : nodesToUpdate);
     saveGraph();
   }
 
@@ -173,16 +195,27 @@ class GraphProvider extends ChangeNotifier {
     if (!parent.children.contains(child)) { parent.children.add(child); }
     if (!child.parents.contains(parent)) { child.parents.add(parent); }
     child.parents.isEmpty ? _rootNodes.add(child) : _rootNodes.remove(child);
-    updateDepths([child]);
+    updateDepths({child});
     saveGraph();
   }
 
-  void removeLink(CategoryNode parent, CategoryNode child) {
-    parent.children.remove(child);
-    child.parents.remove(parent);
-    if (child.parents.isEmpty) { _rootNodes.add(child); }
-    updateDepths([child]);
-    saveGraph();
+  void removeLink(CategoryNode nodeA, CategoryNode nodeB) {
+    CategoryNode? parent;
+    CategoryNode? child;
+
+    if (nodeA.children.contains(nodeB)) {
+      parent = nodeA; child = nodeB;
+    } else if (nodeB.children.contains(nodeA)) {
+      parent = nodeB; child = nodeA;
+    }
+
+    if (parent != null && child != null) {
+      parent.children.remove(child);
+      child.parents.remove(parent);
+      if (child.parents.isEmpty) { _rootNodes.add(child); }
+      updateDepths({child});
+      saveGraph();
+    }
   }
 
   void updateNode(CategoryNode node, {String? name, String? description}) {
@@ -192,7 +225,7 @@ class GraphProvider extends ChangeNotifier {
     saveGraph();
   }
 
-  void updateDepths(List<CategoryNode> nodes) {
+  void updateDepths(Set<CategoryNode> nodes) {
     Set<CategoryNode> descendants = {};
     final queue = Queue<CategoryNode>.from(nodes);
 
@@ -247,7 +280,7 @@ class GraphProvider extends ChangeNotifier {
     return false;
   }
 
-  List<CategoryNode> getAllNodes() {
+  Set<CategoryNode> getAllNodes() {
     Set<CategoryNode> allNodes = {};
     List<CategoryNode> queue = List.from(_rootNodes);
     
@@ -258,7 +291,7 @@ class GraphProvider extends ChangeNotifier {
         queue.addAll(node.children);
       }
     }
-    return allNodes.toList();
+    return allNodes;
   }
 
   int countTotalDependencies(CategoryNode node) {

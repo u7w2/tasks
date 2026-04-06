@@ -75,10 +75,8 @@ class _TasksScreenState extends State<TasksScreen> {
               icon: const Icon(Icons.delete),
               onPressed: () {
                 // To avoid concurrent modification issues while deleting
-                var nodesToDelete = uiState.selectedNodes.toList();
-                for (var node in nodesToDelete) {
-                  graph.removeNode(node);
-                }
+                var nodesToDelete = uiState.selectedNodes;
+                graph.removeNodes(nodesToDelete);
                 uiState.clearSelection();
               },
             ),
@@ -88,9 +86,9 @@ class _TasksScreenState extends State<TasksScreen> {
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
         onPressed: () {
-          List<CategoryNode>? parentNodes;
+          Set<CategoryNode>? parentNodes;
           if (uiState.selectedNodes.isNotEmpty) {
-            parentNodes = uiState.selectedNodes.toList();
+            parentNodes = uiState.selectedNodes.toSet();
           }
           var newNode = graph.addNode(
             "New Task",
