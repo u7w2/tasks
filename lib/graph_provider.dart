@@ -144,25 +144,28 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void removeNode(CategoryNode node) {
-    _rootNodes.remove(node);
-    for (CategoryNode parent in node.parents) { removeLink(parent, node); }
-    for (CategoryNode child in node.children) { removeLink(node, child); }
+    // Snapshot before any mutation — removing links modifies these lists mid-iteration
+    final parents = List<CategoryNode>.from(node.parents);
+    final children = List<CategoryNode>.from(node.children);
 
-    for (CategoryNode parent in node.parents) {
-      for (CategoryNode child in node.children) { addLink(parent, child); }
+    _rootNodes.remove(node);
+    for (var parent in parents) { removeLink(parent, node); }
+    for (var child in children) { removeLink(node, child); }
+
+    // Reconnect: inherit edges (bypass if both being deleted — caller handles that)
+    for (var parent in parents) {
+      for (var child in children) { addLink(parent, child); }
     }
-    
-    if (node.parents.isEmpty) {
-      for (CategoryNode child in node.children) {
+
+    // Promote stranded children to root
+    if (parents.isEmpty) {
+      for (var child in children) {
         if (child.parents.isEmpty && !_rootNodes.contains(child)) { _rootNodes.add(child); }
       }
     }
 
-    updateDepths(node.parents + node.children);
-
-    node.children.clear();
-    node.parents.clear();
-
+    // node.parents and node.children are now empty (removeLink already cleared them)
+    updateDepths(parents + children);
     saveGraph();
   }
 
