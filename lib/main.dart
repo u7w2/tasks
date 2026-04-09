@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'graph_provider.dart';
 import 'ui_state_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/depth_column.dart';
 import 'widgets/line_painter.dart';
+import 'workflows_provider.dart';
 
 void main() {
   runApp(const TasksApp());
@@ -16,7 +18,7 @@ class TasksApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => GraphProvider()),
+        ChangeNotifierProvider(create: (context) => WorkflowsProvider()),
         ChangeNotifierProvider(create: (context) => UIStateProvider()),
       ],
       child: MaterialApp(
@@ -30,20 +32,51 @@ class TasksApp extends StatelessWidget {
   }
 }
 
-class TasksScreen extends StatefulWidget {
+class TasksScreen extends StatelessWidget {
   const TasksScreen({super.key});
 
   @override
-  State<TasksScreen> createState() => _TasksScreenState();
+  Widget build(BuildContext context) {
+    var workflows = context.watch<WorkflowsProvider>();
+    if (!workflows.isLoaded || workflows.currentGraph == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    var graph = workflows.currentGraph!;
+
+    return ChangeNotifierProvider.value(
+      value: graph,
+      child: const TasksScreenContent(),
+    );
+  }
 }
 
-class _TasksScreenState extends State<TasksScreen> {
+class TasksScreenContent extends StatefulWidget {
+  const TasksScreenContent({super.key});
+
+  @override
+  State<TasksScreenContent> createState() => _TasksScreenContentState();
+}
+
+class _TasksScreenContentState extends State<TasksScreenContent> {
   final ScrollController _scrollController = ScrollController();
+  String? _lastGraphId;
 
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final graphId = context.read<GraphProvider>().id;
+    if (_lastGraphId != null && _lastGraphId != graphId) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0.0);
+      }
+    }
+    _lastGraphId = graphId;
   }
 
   @override
@@ -62,6 +95,7 @@ class _TasksScreenState extends State<TasksScreen> {
         if (uiState.editingNode != null) uiState.stopEditing();
       },
       child: Scaffold(
+        drawer: const WorkflowsDrawer(),
         appBar: AppBar(
         title: const _SearchBar(),
         actions: [
@@ -123,6 +157,228 @@ class _TasksScreenState extends State<TasksScreen> {
       ),
       body: GraphBody(scrollController: _scrollController),
     ));
+  }
+}
+
+class WorkflowsDrawer extends StatefulWidget {
+  const WorkflowsDrawer({super.key});
+
+  @override
+  State<WorkflowsDrawer> createState() => _WorkflowsDrawerState();
+}
+
+class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
+  String? _editingWorkflowId;
+
+  void _startEditing(String id) {
+    setState(() {
+      _editingWorkflowId = id;
+    });
+  }
+
+  void _stopEditing() {
+    if (mounted) {
+      setState(() {
+        _editingWorkflowId = null;
+      });
+    }
+  }
+
+  Future<void> _attemptDelete(BuildContext context, String workflowId, String workflowName, WorkflowsProvider provider) async {
+    final prefs = await SharedPreferences.getInstance();
+    bool doNotShow = prefs.getBool('hide_delete_workflow_prompt') ?? false;
+
+    if (doNotShow) {
+      provider.deleteWorkflow(workflowId);
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    bool rememberChoice = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            title: const Text("Delete Workflow"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text("Are you sure you want to delete '$workflowName'?"),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Checkbox(
+                      value: rememberChoice,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          rememberChoice = value ?? false;
+                        });
+                      },
+                    ),
+                    const Expanded(child: Text("Do not show again")),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () {
+                  if (rememberChoice) {
+                    prefs.setBool('hide_delete_workflow_prompt', true);
+                  }
+                  provider.deleteWorkflow(workflowId);
+                  Navigator.pop(context);
+                },
+                child: const Text("Delete", style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var workflowsProvider = context.watch<WorkflowsProvider>();
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'Workflows',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: workflowsProvider.workflows.length,
+                itemBuilder: (context, index) {
+                  var workflow = workflowsProvider.workflows[index];
+                  bool isSelected = workflow.id == workflowsProvider.currentWorkflowId;
+                  bool isEditing = workflow.id == _editingWorkflowId;
+                  return ListTile(
+                    leading: Icon(isSelected ? Icons.folder_open : Icons.folder),
+                    title: isEditing 
+                      ? _InlineWorkflowEditor(
+                          workflowId: workflow.id,
+                          initialName: workflow.name,
+                          onComplete: (newName) {
+                            if (newName.trim().isNotEmpty) {
+                              context.read<WorkflowsProvider>().updateWorkflowName(workflow.id, newName.trim());
+                            }
+                            _stopEditing();
+                          },
+                        ) 
+                      : Text(
+                          workflow.name,
+                          style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
+                        ),
+                    selected: isSelected,
+                    onTap: () {
+                      if (isEditing) return;
+                      context.read<UIStateProvider>().clearSelection();
+                      context.read<UIStateProvider>().clearSearch();
+                      workflowsProvider.switchWorkflow(workflow.id);
+                    },
+                    onLongPress: () {
+                      _startEditing(workflow.id);
+                    },
+                    trailing: isSelected ? IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _attemptDelete(context, workflow.id, workflow.name, workflowsProvider);
+                      },
+                    ) : null,
+                  );
+                },
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text("New Workflow"),
+              onTap: () {
+                context.read<UIStateProvider>().clearSelection();
+                context.read<UIStateProvider>().clearSearch();
+                String newId = workflowsProvider.createNewWorkflow();
+                _startEditing(newId);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineWorkflowEditor extends StatefulWidget {
+  final String workflowId;
+  final String initialName;
+  final Function(String) onComplete;
+
+  const _InlineWorkflowEditor({
+    required this.workflowId,
+    required this.initialName,
+    required this.onComplete,
+  });
+
+  @override
+  _InlineWorkflowEditorState createState() => _InlineWorkflowEditorState();
+}
+
+class _InlineWorkflowEditorState extends State<_InlineWorkflowEditor> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+    _controller.selection = TextSelection(baseOffset: 0, extentOffset: widget.initialName.length);
+    _focusNode = FocusNode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    widget.onComplete(_controller.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      focusNode: _focusNode,
+      onSubmitted: (_) => _submit(),
+      onTapOutside: (_) => _submit(),
+      decoration: const InputDecoration(
+        isDense: true,
+        contentPadding: EdgeInsets.zero,
+        border: InputBorder.none,
+      ),
+      style: const TextStyle(fontSize: 16),
+      cursorColor: Colors.blueAccent,
+    );
   }
 }
 
@@ -244,6 +500,7 @@ class _SearchBar extends StatefulWidget {
 
 class _SearchBarState extends State<_SearchBar> {
   final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
@@ -266,6 +523,7 @@ class _SearchBarState extends State<_SearchBar> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -279,6 +537,7 @@ class _SearchBarState extends State<_SearchBar> {
   Widget build(BuildContext context) {
     return TextField(
       controller: _controller,
+      focusNode: _focusNode..skipTraversal = true,
       decoration: InputDecoration(
         hintText: "Search nodes (Regex)...",
         border: InputBorder.none,

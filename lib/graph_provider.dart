@@ -32,17 +32,26 @@ class GraphProvider extends ChangeNotifier {
   final Set<CategoryNode> _rootNodes;
   Set<CategoryNode> get rootNodes => Set.unmodifiable(_rootNodes);
 
-  GraphProvider({Set<CategoryNode>? rootNodes})
+  final String id;
+  bool _isLoaded = false;
+
+  GraphProvider({required this.id, Set<CategoryNode>? rootNodes})
     : _rootNodes = rootNodes ?? {} {
     for (CategoryNode node in _rootNodes) {
       node.parents.clear();
     }
     if (_rootNodes.isEmpty) {
       loadGraph();
+    } else {
+      // Nodes were provided directly — no async load needed
+      _isLoaded = true;
     }
   }
 
   Future<void> saveGraph() async {
+    // Guard: don't overwrite persisted data before loadGraph() has completed
+    if (!_isLoaded) return;
+
     final prefs = await SharedPreferences.getInstance();
     
     List<Map<String, dynamic>> nodesJson = [];
@@ -68,12 +77,12 @@ class GraphProvider extends ChangeNotifier {
       'edges': edgesJson,
     };
     
-    await prefs.setString('tasks_graph_data', jsonEncode(data));
+    await prefs.setString('tasks_graph_data_$id', jsonEncode(data));
   }
 
   Future<void> loadGraph() async {
     final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString('tasks_graph_data');
+    String? jsonString = prefs.getString('tasks_graph_data_$id');
     if (jsonString == null) return;
     
     try {
@@ -85,10 +94,10 @@ class GraphProvider extends ChangeNotifier {
       
       for (var json in nodesJson) {
         var node = CategoryNode(
-          json['name'],
-          uuid: json['uuid'],
-          description: json['description'],
-          depth: json['depth'] as int?,
+          json['name'].toString(),
+          uuid: json['uuid']?.toString(),
+          description: json['description']?.toString(),
+          depth: (json['depth'] as num?)?.toInt(),
         );
         directory[node.uuid] = node;
       }
@@ -115,6 +124,8 @@ class GraphProvider extends ChangeNotifier {
       updateDepths(_rootNodes);
     } catch (e) {
       debugPrint("Failed to load graph: $e");
+    } finally {
+      _isLoaded = true;
     }
   }
 
