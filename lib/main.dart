@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/depth_column.dart';
 import 'widgets/line_painter.dart';
 import 'workflows_provider.dart';
+import 'settings_page.dart';
 
 void main() {
   runApp(const TasksApp());
@@ -113,7 +114,23 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
                 uiState.clearSelection();
               },
             ),
-          const SizedBox(width: 16),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              if (value == 'settings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SettingsPage()),
+                );
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'export', child: Text('Export Workflow')),
+              const PopupMenuItem(value: 'import', child: Text('Import Workflow')),
+              const PopupMenuItem(value: 'settings', child: Text('Settings')),
+            ],
+          ),
+          const SizedBox(width: 8),
         ],
       ),
       floatingActionButton: FloatingActionButton(
