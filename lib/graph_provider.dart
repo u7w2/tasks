@@ -1,7 +1,7 @@
-import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'storage_service.dart';
 import 'dart:collection';
 
 class CategoryNode {
@@ -22,7 +22,6 @@ class CategoryNode {
     String? uuid,
     Set<CategoryNode>? children,
     Set<CategoryNode>? parents,
-    int? depth,
   }) : uuid = uuid ?? _uuidGenerator.v4(),
        children = children ?? {},  
        parents = parents ?? {};
@@ -37,9 +36,6 @@ class GraphProvider extends ChangeNotifier {
 
   GraphProvider({required this.id, Set<CategoryNode>? rootNodes})
     : _rootNodes = rootNodes ?? {} {
-    for (CategoryNode node in _rootNodes) {
-      node.parents.clear();
-    }
     if (_rootNodes.isEmpty) {
       loadGraph();
     } else {
@@ -51,18 +47,15 @@ class GraphProvider extends ChangeNotifier {
   Future<void> saveGraph() async {
     // Guard: don't overwrite persisted data before loadGraph() has completed
     if (!_isLoaded) return;
-
-    final prefs = await SharedPreferences.getInstance();
     
     List<Map<String, dynamic>> nodesJson = [];
     List<Map<String, String>> edgesJson = [];
-    
+
     for (var node in getAllNodes()) {
       nodesJson.add({
         'uuid': node.uuid,
         'name': node.name,
         'description': node.description,
-        'depth': node.depth,
       });
       for (var child in node.children) {
         edgesJson.add({
@@ -77,16 +70,17 @@ class GraphProvider extends ChangeNotifier {
       'edges': edgesJson,
     };
     
-    await prefs.setString('tasks_graph_data_$id', jsonEncode(data));
+    await StorageService().saveGraphData(id, data);
   }
 
   Future<void> loadGraph() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? jsonString = prefs.getString('tasks_graph_data_$id');
-    if (jsonString == null) return;
+    Map<String, dynamic>? data = await StorageService().loadGraphData(id);
+    if (data == null) {
+      _isLoaded = true;
+      return;
+    }
     
     try {
-      Map<String, dynamic> data = jsonDecode(jsonString);
       List<dynamic> nodesJson = data['nodes'];
       List<dynamic> edgesJson = data['edges'];
       
@@ -97,7 +91,6 @@ class GraphProvider extends ChangeNotifier {
           json['name'].toString(),
           uuid: json['uuid']?.toString(),
           description: json['description']?.toString(),
-          depth: (json['depth'] as num?)?.toInt(),
         );
         directory[node.uuid] = node;
       }
@@ -134,7 +127,6 @@ class GraphProvider extends ChangeNotifier {
     String? description,
     Set<CategoryNode>? parents,
     Set<CategoryNode>? children,
-    int? index,
   }) {
     final CategoryNode node = CategoryNode(
       name,

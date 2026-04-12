@@ -1,8 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'graph_provider.dart';
+import 'storage_service.dart';
 
 class WorkflowMeta {
   final String id;
@@ -45,20 +44,11 @@ class WorkflowsProvider extends ChangeNotifier {
     _loadWorkflows();
   }
 
-  Future<void> _loadWorkflows() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    String? workflowsJson = prefs.getString('workflows_list');
-    if (workflowsJson != null) {
-      try {
-        List<dynamic> decoded = jsonDecode(workflowsJson);
-        _workflows = decoded.map((e) => WorkflowMeta.fromJson(Map<String, dynamic>.from(e))).toList();
-      } catch (e) {
-        debugPrint("Error loading workflows: $e");
-      }
-    }
+  final StorageService _storageService = StorageService();
 
-    String? lastActiveId = prefs.getString('workflows_active_id');
+  Future<void> _loadWorkflows() async {
+    _workflows = await _storageService.loadWorkflows();
+    String? lastActiveId = await _storageService.loadActiveWorkflowId();
     if (_workflows.isNotEmpty) {
       if (lastActiveId != null && _workflows.any((w) => w.id == lastActiveId)) {
         _currentWorkflowId = lastActiveId;
@@ -77,12 +67,7 @@ class WorkflowsProvider extends ChangeNotifier {
   }
 
   Future<void> _saveWorkflows() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<Map<String, dynamic>> jsonList = _workflows.map((w) => w.toJson()).toList();
-    await prefs.setString('workflows_list', jsonEncode(jsonList));
-    if (_currentWorkflowId != null) {
-      await prefs.setString('workflows_active_id', _currentWorkflowId!);
-    }
+    await _storageService.saveWorkflows(_workflows, _currentWorkflowId);
   }
 
   void _ensureGraphProvider(String id) {
@@ -135,9 +120,7 @@ class WorkflowsProvider extends ChangeNotifier {
       notifyListeners();
       
       // Clean up SharedPreferences for deleted workflow
-      SharedPreferences.getInstance().then((prefs) {
-        prefs.remove('tasks_graph_data_$id');
-      });
+      _storageService.deleteGraphData(id);
     }
   }
 
@@ -148,5 +131,17 @@ class WorkflowsProvider extends ChangeNotifier {
       _saveWorkflows();
       notifyListeners();
     }
+  }
+
+  Future<WorkflowMeta?> importWorkflow(String jsonString) async {
+    WorkflowMeta? newWorkflow = await _storageService.importWorkflow(jsonString);
+    if (newWorkflow != null) {
+      _workflows.add(newWorkflow);
+      _currentWorkflowId = newWorkflow.id;
+      _ensureGraphProvider(newWorkflow.id);
+      await _saveWorkflows();
+      notifyListeners();
+    }
+    return newWorkflow;
   }
 }

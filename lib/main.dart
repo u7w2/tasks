@@ -1,12 +1,18 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+
 import 'graph_provider.dart';
 import 'ui_state_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/depth_column.dart';
 import 'widgets/line_painter.dart';
 import 'workflows_provider.dart';
 import 'settings_page.dart';
+import 'storage_service.dart';
 
 void main() {
   runApp(const TasksApp());
@@ -84,6 +90,7 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
   Widget build(BuildContext context) {
     var graph = context.watch<GraphProvider>();
     var uiState = context.watch<UIStateProvider>();
+    var workflows = context.watch<WorkflowsProvider>();
 
     bool hasActiveState = uiState.selectedNodes.isNotEmpty || uiState.editingNode != null || uiState.searchQuery.isNotEmpty;
 
@@ -116,8 +123,63 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
             ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'settings') {
+            onSelected: (value) async {
+              if (value == 'export') {
+                try {
+                  var currentMeta = workflows.workflows.firstWhere((w) => w.id == workflows.currentWorkflowId);
+                  String jsonString = await StorageService().exportWorkflow(currentMeta);
+
+                  // Write to a temp file so share_plus can attach it
+                  final dir = await getTemporaryDirectory();
+                  final safeFileName = currentMeta.name.replaceAll(RegExp(r'[^\w\s\-]'), '_');
+                  final file = File('${dir.path}/$safeFileName.json');
+                  await file.writeAsString(jsonString);
+
+                  final xFile = XFile(file.path, mimeType: 'application/json');
+                  await SharePlus.instance.share(
+                    ShareParams(
+                      files: [xFile],
+                      subject: currentMeta.name,
+                    ),
+                  );
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to export: $e')),
+                    );
+                  }
+                }
+              } else if (value == 'import') {
+                FilePickerResult? result = await FilePicker.pickFiles(
+                  dialogTitle: 'Import Workflow',
+                  type: FileType.custom,
+                  allowedExtensions: ['json'],
+                  withData: true, // read bytes directly — avoids path issues on iOS
+                );
+                if (result != null && result.files.single.bytes != null) {
+                  try {
+                    String jsonString = String.fromCharCodes(result.files.single.bytes!);
+                    var imported = await workflows.importWorkflow(jsonString);
+                    if (context.mounted) {
+                      if (imported != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Workflow imported successfully')),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Failed to parse workflow file')),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error importing: $e')),
+                      );
+                    }
+                  }
+                }
+              } else if (value == 'settings') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const SettingsPage()),
