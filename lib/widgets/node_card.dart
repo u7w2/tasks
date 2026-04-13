@@ -138,15 +138,20 @@ class _NodeCardState extends State<NodeCard> {
               return;
             }
 
-            for (var draggedNode in draggedNodes) {
-               bool hasChildLink = targetNode.children.contains(draggedNode);
-               bool hasParentLink = draggedNode.children.contains(targetNode);
+            bool anyLinkExists = draggedNodes.any((node) => 
+              targetNode.children.contains(node) || node.children.contains(targetNode));
 
-               if (hasChildLink) {
-                  graph.removeLink(targetNode, draggedNode);
-               } else if (hasParentLink) {
-                  graph.removeLink(draggedNode, targetNode);
+            for (var draggedNode in draggedNodes) {
+               if (anyLinkExists) {
+                  // If any link exists, we ensure ALL are removed
+                  if (targetNode.children.contains(draggedNode)) {
+                    graph.removeLink(targetNode, draggedNode);
+                  }
+                  if (draggedNode.children.contains(targetNode)) {
+                    graph.removeLink(draggedNode, targetNode);
+                  }
                } else {
+                  // No links existed at all, so create new ones
                   graph.addLink(targetNode, draggedNode);
                }
             }
