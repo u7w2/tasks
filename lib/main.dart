@@ -112,6 +112,12 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
         appBar: AppBar(
         title: const _SearchBar(),
         actions: [
+          if (graph.canUndo)
+            IconButton(
+              icon: const Icon(Icons.undo),
+              tooltip: 'Undo',
+              onPressed: () => graph.undo(),
+            ),
           if (graph.selectedNodes.length == 1)
             IconButton(
               icon: const Icon(Icons.edit),

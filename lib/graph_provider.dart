@@ -1,4 +1,5 @@
 
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'storage_service.dart';
@@ -37,6 +38,10 @@ class GraphProvider extends ChangeNotifier {
   final Set<CategoryNode> _selectedNodes = {};
   Set<CategoryNode> get selectedNodes => Set.unmodifiable(_selectedNodes);
 
+  final List<Map<String, dynamic>> _undoStack = [];
+  static const int _maxUndoStack = 50;
+  bool get canUndo => _undoStack.isNotEmpty;
+
   GraphProvider({required this.id, Set<CategoryNode>? rootNodes})
     : _rootNodes = rootNodes ?? {} {
     if (_rootNodes.isEmpty) {
@@ -45,6 +50,57 @@ class GraphProvider extends ChangeNotifier {
       // Nodes were provided directly — no async load needed
       _isLoaded = true;
     }
+  }
+
+  void _pushUndoSnapshot() {
+    if (!_isLoaded) return;
+    List<Map<String, dynamic>> nodesJson = [];
+    List<Map<String, String>> edgesJson = [];
+    for (var node in getAllNodes()) {
+      nodesJson.add({
+        'uuid': node.uuid,
+        'name': node.name,
+        'description': node.description,
+      });
+      for (var child in node.children) {
+        edgesJson.add({'parent': node.uuid, 'child': child.uuid});
+      }
+    }
+    final newSnapshot = {'nodes': nodesJson, 'edges': edgesJson};
+    // Don't push if state hasn't changed since last snapshot
+    if (_undoStack.isNotEmpty && jsonEncode(_undoStack.last) == jsonEncode(newSnapshot)) return;
+    _undoStack.add(newSnapshot);
+    if (_undoStack.length > _maxUndoStack) _undoStack.removeAt(0);
+  }
+
+  void undo() {
+    if (_undoStack.isEmpty) return;
+    final snapshot = _undoStack.removeLast();
+    _selectedNodes.clear();
+
+    final Map<String, CategoryNode> directory = {};
+    for (var json in snapshot['nodes'] as List) {
+      final node = CategoryNode(
+        json['name'].toString(),
+        uuid: json['uuid']?.toString(),
+        description: json['description']?.toString(),
+      );
+      directory[node.uuid] = node;
+    }
+    for (var edge in snapshot['edges'] as List) {
+      final parentNode = directory[edge['parent'] as String];
+      final childNode = directory[edge['child'] as String];
+      if (parentNode != null && childNode != null) {
+        parentNode.children.add(childNode);
+        childNode.parents.add(parentNode);
+      }
+    }
+    _rootNodes.clear();
+    for (var node in directory.values) {
+      if (node.parents.isEmpty) _rootNodes.add(node);
+    }
+    updateDepths(_rootNodes); // calls notifyListeners
+    saveGraph();
   }
 
   Future<void> saveGraph() async {
@@ -131,6 +187,7 @@ class GraphProvider extends ChangeNotifier {
     Set<CategoryNode>? parents,
     Set<CategoryNode>? children,
   }) {
+    _pushUndoSnapshot();
     final CategoryNode node = CategoryNode(
       name,
       description: description,
@@ -151,6 +208,7 @@ class GraphProvider extends ChangeNotifier {
 
   void removeNodes(Set<CategoryNode> nodes) {
     if (nodes.isEmpty) return;
+    _pushUndoSnapshot();
     final snapshot = Set<CategoryNode>.from(nodes); // snapshot in case nodes IS _selectedNodes
     
     final Set<CategoryNode> nodesToUpdate = {};
@@ -200,6 +258,7 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void addLink(CategoryNode parent, CategoryNode child) {
+    _pushUndoSnapshot();
     if (!parent.children.contains(child)) { parent.children.add(child); }
     if (!child.parents.contains(parent)) { child.parents.add(parent); }
     child.parents.isEmpty ? _rootNodes.add(child) : _rootNodes.remove(child);
@@ -208,6 +267,7 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void removeLink(CategoryNode nodeA, CategoryNode nodeB) {
+    _pushUndoSnapshot();
     CategoryNode? parent;
     CategoryNode? child;
 
@@ -227,6 +287,7 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void updateNode(CategoryNode node, {String? name, String? description}) {
+    _pushUndoSnapshot();
     if (name != null) { node.name = name; }
     if (description != null) { node.description = description; }
     notifyListeners();
@@ -329,6 +390,7 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void importNodes(List<Map<String, dynamic>> nodesData, List<Map<String, String>> edgesData) {
+    _pushUndoSnapshot();
     Map<String, CategoryNode> directory = {};
     
     for (var json in nodesData) {
