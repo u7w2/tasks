@@ -17,17 +17,17 @@ class _NodeCardState extends State<NodeCard> {
   int _tapCount = 0;
   Timer? _tapTimer;
 
-  void _handleTap(UIStateProvider uiState) {
+  void _handleTap(GraphProvider graph) {
     _tapCount++;
     
     if (_tapCount == 1) {
-      uiState.toggleSelection(widget.node);
+      graph.toggleSelection(widget.node);
     } else if (_tapCount == 2) {
-      uiState.ensureSelected(widget.node);
-      uiState.doubleTapSelect(widget.node);
+      graph.ensureSelected(widget.node);
+      graph.doubleTapSelect(widget.node);
     } else if (_tapCount >= 3) {
-      uiState.ensureSelected(widget.node);
-      uiState.tripleTapSelect(widget.node);
+      graph.ensureSelected(widget.node);
+      graph.tripleTapSelect(widget.node);
       _tapCount = 0;
     }
     
@@ -48,12 +48,13 @@ class _NodeCardState extends State<NodeCard> {
   @override
   Widget build(BuildContext context) {
     var uiState = context.watch<UIStateProvider>();
-    bool isSelected = uiState.isSelected(widget.node);
+    var graph = context.watch<GraphProvider>();
+    bool isSelected = graph.isSelected(widget.node);
 
 
     Widget buildCard({bool useKey = false, CategoryNode? overrideNode}) {
       CategoryNode targetNode = overrideNode ?? widget.node;
-      bool isLocalSelected = uiState.isSelected(targetNode);
+      bool isLocalSelected = graph.isSelected(targetNode);
       bool isLocalError = uiState.isErrorNode(targetNode);
       bool isInvalidTarget = uiState.isDragging && uiState.invalidDragTargets.contains(targetNode);
       var localKey = uiState.getNodeKey(targetNode.uuid);
@@ -76,7 +77,7 @@ class _NodeCardState extends State<NodeCard> {
             : null,
         child: InkWell(
           canRequestFocus: false,
-          onTap: overrideNode == null ? () => _handleTap(uiState) : null,
+          onTap: overrideNode == null ? () => _handleTap(graph) : null,
           onLongPress: overrideNode == null ? () => uiState.startEditing(widget.node) : null,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
@@ -104,7 +105,7 @@ class _NodeCardState extends State<NodeCard> {
 
     return DragTarget<List<CategoryNode>>(
       onWillAcceptWithDetails: (details) {
-        if (uiState.isSelected(widget.node)) return false;
+        if (graph.isSelected(widget.node)) return false;
         if (uiState.invalidDragTargets.contains(widget.node)) return false;
         uiState.setHoverTarget(widget.node);
         return true;
@@ -174,8 +175,8 @@ class _NodeCardState extends State<NodeCard> {
         if (!isSelected) {
           return cardWrap;
         }
-
-        List<CategoryNode> draggedData = uiState.selectedNodes.toList();
+        
+        List<CategoryNode> draggedData = graph.selectedNodes.toList();
         
         List<CategoryNode> stackOrder = List.from(draggedData);
         stackOrder.remove(widget.node);

@@ -145,7 +145,7 @@ class WorkflowsProvider extends ChangeNotifier {
     return newWorkflow;
   }
 
-  void moveNodes(Set<CategoryNode> nodesToMove, String targetWorkflowId) async {
+  void moveNodes(Set<CategoryNode> nodesToMove, String targetWorkflowId) {
     if (_currentWorkflowId == null || _currentWorkflowId == targetWorkflowId) return;
     
     final sourceGraph = currentGraph;

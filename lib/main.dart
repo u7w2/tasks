@@ -92,18 +92,18 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
 
   @override
   Widget build(BuildContext context) {
+    var workflows = context.watch<WorkflowsProvider>();
     var graph = context.watch<GraphProvider>();
     var uiState = context.watch<UIStateProvider>();
-    var workflows = context.watch<WorkflowsProvider>();
 
-    bool hasActiveState = uiState.selectedNodes.isNotEmpty || uiState.editingNode != null || uiState.searchQuery.isNotEmpty;
+    bool hasActiveState = graph.selectedNodes.isNotEmpty || uiState.editingNode != null || uiState.searchQuery.isNotEmpty;
 
     return PopScope(
       canPop: !hasActiveState,
       onPopInvokedWithResult: (didPop, dynamic result) {
         if (didPop) return;
-        uiState.clearSelection();
-        if (uiState.searchQuery.isNotEmpty) uiState.clearSearch();
+        graph.clearSelection();
+        if (uiState.searchQuery.isNotEmpty) uiState.clearSearch(graph);
         if (uiState.editingNode != null) uiState.stopEditing();
       },
       child: Scaffold(
@@ -112,18 +112,18 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
         appBar: AppBar(
         title: const _SearchBar(),
         actions: [
-          if (uiState.selectedNodes.length == 1)
+          if (graph.selectedNodes.length == 1)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => uiState.startEditing(uiState.selectedNodes.first),
+              onPressed: () => uiState.startEditing(graph.selectedNodes.first),
             ),
-          if (uiState.selectedNodes.isNotEmpty)
+          if (graph.selectedNodes.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete),
               onPressed: () {
-                var nodesToDelete = uiState.selectedNodes;
+                var nodesToDelete = graph.selectedNodes;
                 graph.removeNodes(nodesToDelete);
-                uiState.clearSelection();
+                graph.clearSelection();
               },
             ),
           PopupMenuButton<String>(
@@ -204,15 +204,15 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
         child: const Icon(Icons.add),
         onPressed: () {
           Set<CategoryNode>? parentNodes;
-          if (uiState.selectedNodes.isNotEmpty) {
-            parentNodes = uiState.selectedNodes.toSet();
+          if (graph.selectedNodes.isNotEmpty) {
+            parentNodes = graph.selectedNodes.toSet();
           }
           var newNode = graph.addNode(
             "New Task",
             parents: parentNodes,
           );
-          uiState.clearSelection();
-          uiState.toggleSelection(newNode);
+          graph.clearSelection();
+          graph.toggleSelection(newNode);
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
             bool needsScroll = false;
@@ -371,8 +371,8 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
                     selected: isSelected,
                     onTap: () {
                       if (isEditing) return;
-                      context.read<UIStateProvider>().clearSelection();
-                      context.read<UIStateProvider>().clearSearch();
+                      var uiState = context.read<UIStateProvider>();
+                      uiState.clearSearch(context.read<GraphProvider>());
                       workflowsProvider.switchWorkflow(workflow.id);
                     },
                     onLongPress: () {
@@ -390,14 +390,15 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
                     onWillAcceptWithDetails: (details) => !isSelected,
                     onAcceptWithDetails: (details) {
                       workflowsProvider.moveNodes(details.data.toSet(), workflow.id);
-                      context.read<UIStateProvider>().stopDragging();
+                      var uiState = context.read<UIStateProvider>();
+                      uiState.stopDragging();
                       Scaffold.of(context).closeDrawer();
                     },
                     builder: (context, candidateData, rejectedData) {
                       bool isHovered = candidateData.isNotEmpty;
                       return Container(
                         decoration: BoxDecoration(
-                          color: isHovered ? Colors.blueAccent.withOpacity(0.1) : null,
+                          color: isHovered ? Colors.blueAccent.withValues(alpha: 0.1) : null,
                         ),
                         child: tile,
                       );
@@ -411,8 +412,8 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
               leading: const Icon(Icons.add),
               title: const Text("New Workflow"),
               onTap: () {
-                context.read<UIStateProvider>().clearSelection();
-                context.read<UIStateProvider>().clearSearch();
+                var uiState = context.read<UIStateProvider>();
+                uiState.clearSearch(context.read<GraphProvider>());
                 String newId = workflowsProvider.createNewWorkflow();
                 _startEditing(newId);
               },
@@ -496,7 +497,6 @@ class _GraphBodyState extends State<GraphBody> {
   late VoidCallback _onScroll;
   Timer? _scrollTimer;
   Timer? _drawerHoverTimer;
-  Offset? _lastPointerPos;
 
   void _startScrollTimer(double delta) {
     if (_scrollTimer != null) return;
@@ -521,7 +521,6 @@ class _GraphBodyState extends State<GraphBody> {
       return;
     }
 
-    _lastPointerPos = event.localPosition;
     double x = event.localPosition.dx;
     double screenWidth = MediaQuery.of(context).size.width;
     const double scrollThreshold = 80.0;
@@ -599,7 +598,7 @@ class _GraphBodyState extends State<GraphBody> {
             },
             child: GestureDetector(
           onTap: () {
-            uiState.clearSelection();
+            graph.clearSelection();
             if (uiState.editingNode != null) uiState.stopEditing();
           },
           behavior: HitTestBehavior.translucent,
@@ -710,7 +709,9 @@ class _SearchBarState extends State<_SearchBar> {
                 icon: const Icon(Icons.clear),
                 onPressed: () {
                   _controller.clear();
-                  _onChanged("");
+                  var graph = context.read<GraphProvider>();
+                  var uiState = context.read<UIStateProvider>();
+                  uiState.clearSearch(graph);
                   FocusScope.of(context).unfocus();
                 },
               )

@@ -34,6 +34,9 @@ class GraphProvider extends ChangeNotifier {
   final String id;
   bool _isLoaded = false;
 
+  final Set<CategoryNode> _selectedNodes = {};
+  Set<CategoryNode> get selectedNodes => Set.unmodifiable(_selectedNodes);
+
   GraphProvider({required this.id, Set<CategoryNode>? rootNodes})
     : _rootNodes = rootNodes ?? {} {
     if (_rootNodes.isEmpty) {
@@ -148,11 +151,13 @@ class GraphProvider extends ChangeNotifier {
 
   void removeNodes(Set<CategoryNode> nodes) {
     if (nodes.isEmpty) return;
+    final snapshot = Set<CategoryNode>.from(nodes); // snapshot in case nodes IS _selectedNodes
     
     final Set<CategoryNode> nodesToUpdate = {};
     
-    for (var node in nodes) {
+    for (var node in snapshot) {
       _rootNodes.remove(node);
+      _selectedNodes.remove(node);
       
       final parents = Set<CategoryNode>.from(node.parents);
       final children = Set<CategoryNode>.from(node.children);
@@ -163,7 +168,7 @@ class GraphProvider extends ChangeNotifier {
       
       for (var child in children) {
         child.parents.remove(node);
-        if (!nodes.contains(child)) {
+        if (!snapshot.contains(child)) {
           nodesToUpdate.add(child);
           if (child.parents.isEmpty) {
             _rootNodes.add(child);
@@ -172,9 +177,9 @@ class GraphProvider extends ChangeNotifier {
       }
       
       for (var parent in parents) {
-        if (nodes.contains(parent)) continue;
+        if (snapshot.contains(parent)) continue;
         for (var child in children) {
-          if (nodes.contains(child)) continue;
+          if (snapshot.contains(child)) continue;
           
           if (!parent.children.contains(child)) {
             parent.children.add(child);
@@ -357,5 +362,79 @@ class GraphProvider extends ChangeNotifier {
     
     updateDepths(newRoots.isEmpty ? Set.from(directory.values) : newRoots);
     saveGraph();
+  }
+
+  void toggleSelection(CategoryNode node) {
+    if (_selectedNodes.contains(node)) {
+      _selectedNodes.remove(node);
+    } else {
+      _selectedNodes.add(node);
+    }
+    notifyListeners();
+  }
+
+  void clearSelection() {
+    if (_selectedNodes.isEmpty) return;
+    _selectedNodes.clear();
+    notifyListeners();
+  }
+
+  bool isSelected(CategoryNode node) => _selectedNodes.contains(node);
+
+  void ensureSelected(CategoryNode node) {
+    if (!_selectedNodes.contains(node)) {
+      _selectedNodes.add(node);
+      notifyListeners();
+    }
+  }
+
+  void selectNodes(Set<CategoryNode> nodes) {
+    _selectedNodes.addAll(nodes);
+    notifyListeners();
+  }
+
+  void doubleTapSelect(CategoryNode node) {
+    _selectedNodes.add(node);
+    _addAncestors(node, {});
+    _addDescendants(node, {});
+    notifyListeners();
+  }
+
+  void tripleTapSelect(CategoryNode node) {
+    Set<CategoryNode> visited = {};
+    _floodFillRecursive(node, visited);
+    notifyListeners();
+  }
+
+  void _floodFillRecursive(CategoryNode node, Set<CategoryNode> visited) {
+    if (visited.contains(node)) return; 
+    visited.add(node);
+    _selectedNodes.add(node);
+    for (var parent in node.parents) {
+      _floodFillRecursive(parent, visited);
+    }
+    for (var child in node.children) {
+      _floodFillRecursive(child, visited);
+    }
+  }
+
+  void _addAncestors(CategoryNode node, Set<CategoryNode> visited) {
+    for (var parent in node.parents) {
+      if (!visited.contains(parent)) {
+        visited.add(parent);
+        _selectedNodes.add(parent);
+        _addAncestors(parent, visited);
+      }
+    }
+  }
+
+  void _addDescendants(CategoryNode node, Set<CategoryNode> visited) {
+    for (var child in node.children) {
+      if (!visited.contains(child)) {
+        visited.add(child);
+        _selectedNodes.add(child);
+        _addDescendants(child, visited);
+      }
+    }
   }
 }

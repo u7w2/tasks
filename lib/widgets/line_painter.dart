@@ -47,12 +47,12 @@ class LinePainter extends CustomPainter {
         Offset childPos = childBox.localToGlobal(childBox.size.centerLeft(Offset.zero), ancestor: overlayBox);
         Offset parentPos = parentBox.localToGlobal(parentBox.size.centerRight(Offset.zero), ancestor: overlayBox);
 
-        bool isHighlighted = uiState.isSelected(child) && uiState.isSelected(parent);
+        bool isHighlighted = graph.isSelected(child) && graph.isSelected(parent);
         
         bool isDeletionHover = false;
         if (uiState.hoverTarget != null && uiState.isDragging) {
-          if ((child == uiState.hoverTarget && uiState.isSelected(parent)) ||
-              (parent == uiState.hoverTarget && uiState.isSelected(child))) {
+          if ((child == uiState.hoverTarget && graph.isSelected(parent)) ||
+              (parent == uiState.hoverTarget && graph.isSelected(child))) {
             isDeletionHover = true;
           }
         }
