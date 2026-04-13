@@ -103,131 +103,135 @@ class _NodeCardState extends State<NodeCard> {
       ));
     }
 
-    return DragTarget<List<CategoryNode>>(
-      onWillAcceptWithDetails: (details) {
-        if (graph.isSelected(widget.node)) return false;
-        if (uiState.invalidDragTargets.contains(widget.node)) return false;
-        uiState.setHoverTarget(widget.node);
-        return true;
-      },
-      onLeave: (data) => uiState.clearHoverTarget(),
-      onAcceptWithDetails: (details) {
-        var graph = context.read<GraphProvider>();
-        List<CategoryNode> draggedNodes = details.data;
-        CategoryNode targetNode = widget.node;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        double currentWidth = constraints.maxWidth;
 
-        bool hasCycle = false;
-        for (var draggedNode in draggedNodes) {
-          bool hasDirectLink = targetNode.children.contains(draggedNode) || draggedNode.children.contains(targetNode);
-          if (!hasDirectLink && graph.wouldCreateCycle(targetNode, draggedNode)) {
-            hasCycle = true;
-            break;
-          }
-        }
-
-        if (hasCycle) {
-          uiState.flashError([targetNode, ...draggedNodes]);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Cannot link: Circular dependency!'),
-            backgroundColor: Colors.red,
-          ));
-          return;
-        }
-
-        for (var draggedNode in draggedNodes) {
-           bool hasChildLink = targetNode.children.contains(draggedNode);
-           bool hasParentLink = draggedNode.children.contains(targetNode);
-
-           if (hasChildLink) {
-              graph.removeLink(targetNode, draggedNode);
-           } else if (hasParentLink) {
-              graph.removeLink(draggedNode, targetNode);
-           } else {
-              graph.addLink(targetNode, draggedNode);
-           }
-        }
-        uiState.clearHoverTarget();
-      },
-      builder: (context, candidateData, rejectedData) {
-        bool isHovered = candidateData.isNotEmpty;
-        Color? borderColor;
-        if (isHovered) {
-          bool isDeletion = false;
-          for (var draggedNode in candidateData.first!) {
-            if (widget.node.children.contains(draggedNode) || draggedNode.children.contains(widget.node)) {
-              isDeletion = true;
-              break;
-            }
-          }
-          borderColor = isDeletion ? Colors.red : Colors.green;
-        }
-
-        Widget cardWrap = Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: borderColor != null
-                ? Border.all(color: borderColor, width: 3)
-                : null,
-          ),
-          child: buildCard(useKey: true),
-        );
-
-        if (!isSelected) {
-          return cardWrap;
-        }
-        
-        List<CategoryNode> draggedData = graph.selectedNodes.toList();
-        
-        List<CategoryNode> stackOrder = List.from(draggedData);
-        stackOrder.remove(widget.node);
-        stackOrder = stackOrder.take(4).toList();
-        stackOrder.add(widget.node);
-
-        double baseWidth = 250.0;
-
-        return Draggable<List<CategoryNode>>(
-          data: draggedData,
-          onDragStarted: () {
-             var graph = context.read<GraphProvider>();
-             context.read<UIStateProvider>().startDragging(draggedData, graph);
+        return DragTarget<List<CategoryNode>>(
+          onWillAcceptWithDetails: (details) {
+            if (graph.isSelected(widget.node)) return false;
+            if (uiState.invalidDragTargets.contains(widget.node)) return false;
+            uiState.setHoverTarget(widget.node);
+            return true;
           },
-          onDragEnd: (details) => context.read<UIStateProvider>().stopDragging(),
-          onDraggableCanceled: (velocity, offset) => context.read<UIStateProvider>().stopDragging(),
-          feedback: Material(
-            color: Colors.transparent,
-            child: SizedBox(
-               width: baseWidth + (stackOrder.length - 1) * 8.0,
-               height: 100 + (stackOrder.length - 1) * 8.0,
-               child: Stack(
-                 clipBehavior: Clip.none,
-                 children: List.generate(stackOrder.length, (index) {
-                    bool isTop = index == stackOrder.length - 1;
-                    int offsetIndex = (stackOrder.length - 1) - index; 
-                    return Positioned(
-                       top: offsetIndex * 8.0,
-                       left: offsetIndex * 8.0,
-                       width: baseWidth,
-                       child: Material(
-                         color: Colors.transparent,
-                         elevation: isTop ? 8.0 : 2.0,
-                         borderRadius: BorderRadius.circular(8),
-                         child: Opacity(
-                            opacity: isTop ? 1.0 : (1.0 - (offsetIndex * 0.15)).clamp(0.1, 1.0),
-                            child: buildCard(overrideNode: stackOrder[index]),
-                         )
-                       )
-                    );
-                 }),
-               )
-            )
-          ),
-          childWhenDragging: Opacity(
-            opacity: 0.3,
-            child: cardWrap,
-          ),
-          child: cardWrap,
+          onLeave: (data) => uiState.clearHoverTarget(),
+          onAcceptWithDetails: (details) {
+            var graph = context.read<GraphProvider>();
+            List<CategoryNode> draggedNodes = details.data;
+            CategoryNode targetNode = widget.node;
+
+            bool hasCycle = false;
+            for (var draggedNode in draggedNodes) {
+              bool hasDirectLink = targetNode.children.contains(draggedNode) || draggedNode.children.contains(targetNode);
+              if (!hasDirectLink && graph.wouldCreateCycle(targetNode, draggedNode)) {
+                hasCycle = true;
+                break;
+              }
+            }
+
+            if (hasCycle) {
+              uiState.flashError([targetNode, ...draggedNodes]);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Cannot link: Circular dependency!'),
+                backgroundColor: Colors.red,
+              ));
+              return;
+            }
+
+            for (var draggedNode in draggedNodes) {
+               bool hasChildLink = targetNode.children.contains(draggedNode);
+               bool hasParentLink = draggedNode.children.contains(targetNode);
+
+               if (hasChildLink) {
+                  graph.removeLink(targetNode, draggedNode);
+               } else if (hasParentLink) {
+                  graph.removeLink(draggedNode, targetNode);
+               } else {
+                  graph.addLink(targetNode, draggedNode);
+               }
+            }
+            uiState.clearHoverTarget();
+          },
+          builder: (context, candidateData, rejectedData) {
+            bool isHovered = candidateData.isNotEmpty;
+            Color? borderColor;
+            if (isHovered) {
+              bool isDeletion = false;
+              for (var draggedNode in candidateData.first!) {
+                if (widget.node.children.contains(draggedNode) || draggedNode.children.contains(widget.node)) {
+                  isDeletion = true;
+                  break;
+                }
+              }
+              borderColor = isDeletion ? Colors.red : Colors.green;
+            }
+
+            Widget cardWrap = Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: borderColor != null
+                    ? Border.all(color: borderColor, width: 3)
+                    : null,
+              ),
+              child: buildCard(useKey: true),
+            );
+
+            if (!isSelected) {
+              return cardWrap;
+            }
+            
+            List<CategoryNode> draggedData = graph.selectedNodes.toList();
+            
+            List<CategoryNode> stackOrder = List.from(draggedData);
+            stackOrder.remove(widget.node);
+            stackOrder = stackOrder.take(4).toList();
+            stackOrder.add(widget.node);
+
+            return Draggable<List<CategoryNode>>(
+              data: draggedData,
+              onDragStarted: () {
+                 var graph = context.read<GraphProvider>();
+                 context.read<UIStateProvider>().startDragging(draggedData, graph);
+              },
+              onDragEnd: (details) => context.read<UIStateProvider>().stopDragging(),
+              onDraggableCanceled: (velocity, offset) => context.read<UIStateProvider>().stopDragging(),
+              feedback: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                   width: currentWidth + (stackOrder.length - 1) * 8.0,
+                   height: 100 + (stackOrder.length - 1) * 8.0,
+                   child: Stack(
+                     clipBehavior: Clip.none,
+                     children: List.generate(stackOrder.length, (index) {
+                        bool isTop = index == stackOrder.length - 1;
+                        int offsetIndex = (stackOrder.length - 1) - index; 
+                        return Positioned(
+                           top: offsetIndex * 8.0,
+                           left: offsetIndex * 8.0,
+                           width: currentWidth,
+                           child: Material(
+                             color: Colors.transparent,
+                             elevation: isTop ? 8.0 : 2.0,
+                             borderRadius: BorderRadius.circular(8),
+                             child: Opacity(
+                                opacity: isTop ? 1.0 : (1.0 - (offsetIndex * 0.15)).clamp(0.1, 1.0),
+                                child: buildCard(overrideNode: stackOrder[index]),
+                             )
+                           )
+                        );
+                     }),
+                   )
+                )
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.3,
+                child: cardWrap,
+              ),
+              child: cardWrap,
+            );
+          },
         );
-      },
+      }
     );
   }
 }
