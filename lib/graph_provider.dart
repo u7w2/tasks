@@ -16,6 +16,7 @@ class CategoryNode {
   String? description;
 
   int? depth;
+  int? sortIndex;
 
   CategoryNode(
     this.name, {
@@ -23,6 +24,7 @@ class CategoryNode {
     String? uuid,
     Set<CategoryNode>? children,
     Set<CategoryNode>? parents,
+    this.sortIndex,
   }) : uuid = uuid ?? _uuidGenerator.v4(),
        children = children ?? {},  
        parents = parents ?? {};
@@ -61,6 +63,7 @@ class GraphProvider extends ChangeNotifier {
         'uuid': node.uuid,
         'name': node.name,
         'description': node.description,
+        'sortIndex': node.sortIndex,
       });
       for (var child in node.children) {
         edgesJson.add({'parent': node.uuid, 'child': child.uuid});
@@ -84,6 +87,7 @@ class GraphProvider extends ChangeNotifier {
         json['name'].toString(),
         uuid: json['uuid']?.toString(),
         description: json['description']?.toString(),
+        sortIndex: json['sortIndex'] as int?,
       );
       directory[node.uuid] = node;
     }
@@ -115,6 +119,7 @@ class GraphProvider extends ChangeNotifier {
         'uuid': node.uuid,
         'name': node.name,
         'description': node.description,
+        'sortIndex': node.sortIndex,
       });
       for (var child in node.children) {
         edgesJson.add({
@@ -150,6 +155,7 @@ class GraphProvider extends ChangeNotifier {
           json['name'].toString(),
           uuid: json['uuid']?.toString(),
           description: json['description']?.toString(),
+          sortIndex: json['sortIndex'] as int?,
         );
         directory[node.uuid] = node;
       }
@@ -398,6 +404,7 @@ class GraphProvider extends ChangeNotifier {
         json['name'].toString(),
         uuid: json['uuid']?.toString(),
         description: json['description']?.toString(),
+        sortIndex: (json['sortIndex'] as num?)?.toInt(),
       );
       directory[node.uuid] = node;
     }
@@ -423,6 +430,32 @@ class GraphProvider extends ChangeNotifier {
     }
     
     updateDepths(newRoots.isEmpty ? Set.from(directory.values) : newRoots);
+    saveGraph();
+  }
+
+  /// Reorders nodes within a column by inserting [nodesToMove] at [gapIndex]
+  /// in the provided [columnNodes] list, then reassigning sortIndex values.
+  void reorderNodes(List<CategoryNode> nodesToMove, int gapIndex, List<CategoryNode> columnNodes) {
+    if (nodesToMove.isEmpty || columnNodes.isEmpty) return;
+    _pushUndoSnapshot();
+
+    // Preserve relative order of dragged nodes
+    final orderedToMove = nodesToMove.toList()
+      ..sort((a, b) => (a.sortIndex ?? 0).compareTo(b.sortIndex ?? 0));
+
+    // Build new column order
+    final remaining = columnNodes.where((n) => !nodesToMove.contains(n)).toList();
+    // Adjust insertion index: account for removed nodes that were before the gap
+    final removedBefore = columnNodes.take(gapIndex).where((n) => nodesToMove.contains(n)).length;
+    final insertIndex = (gapIndex - removedBefore).clamp(0, remaining.length);
+    remaining.insertAll(insertIndex, orderedToMove);
+
+    // Assign sequential sortIndex values
+    for (int i = 0; i < remaining.length; i++) {
+      remaining[i].sortIndex = i;
+    }
+
+    notifyListeners();
     saveGraph();
   }
 

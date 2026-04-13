@@ -175,6 +175,7 @@ class WorkflowsProvider extends ChangeNotifier {
         'uuid': node.uuid,
         'name': node.name,
         'description': node.description,
+        'sortIndex': node.sortIndex,
       });
       for (var child in node.children) {
         if (movedUuids.contains(child.uuid)) {

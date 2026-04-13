@@ -577,6 +577,17 @@ class _GraphBodyState extends State<GraphBody> {
       int depth = node.depth ?? 0;
       depthMap.putIfAbsent(depth, () => []).add(node);
     }
+    // Sort nodes within each column by sortIndex; nulls go to the end
+    for (var list in depthMap.values) {
+      list.sort((a, b) {
+        final ai = a.sortIndex;
+        final bi = b.sortIndex;
+        if (ai == null && bi == null) return 0;
+        if (ai == null) return 1;
+        if (bi == null) return -1;
+        return ai.compareTo(bi);
+      });
+    }
     
     List<int> sortedDepths = depthMap.keys.toList()..sort();
 
