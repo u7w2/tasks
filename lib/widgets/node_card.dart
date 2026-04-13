@@ -75,6 +75,7 @@ class _NodeCardState extends State<NodeCard> {
               )
             : null,
         child: InkWell(
+          canRequestFocus: false,
           onTap: overrideNode == null ? () => _handleTap(uiState) : null,
           onLongPress: overrideNode == null ? () => uiState.startEditing(widget.node) : null,
           child: Padding(
