@@ -144,4 +144,55 @@ class WorkflowsProvider extends ChangeNotifier {
     }
     return newWorkflow;
   }
+
+  void moveNodes(Set<CategoryNode> nodesToMove, String targetWorkflowId) async {
+    if (_currentWorkflowId == null || _currentWorkflowId == targetWorkflowId) return;
+    
+    final sourceGraph = currentGraph;
+    final targetGraph = _graphProviders[targetWorkflowId];
+    if (sourceGraph == null || targetGraph == null) return;
+
+    // 1. Identify all descendants
+    Set<CategoryNode> allToMove = {};
+    List<CategoryNode> queue = nodesToMove.toList();
+    int head = 0;
+    while (head < queue.length) {
+      CategoryNode current = queue[head++];
+      if (allToMove.add(current)) {
+        queue.addAll(current.children);
+      }
+    }
+
+    // 2. Prepare data for transfer
+    // We'll store node data and internal edges (links between nodes in allToMove)
+    List<Map<String, dynamic>> nodesData = [];
+    List<Map<String, String>> edgesData = [];
+    
+    Set<String> movedUuids = allToMove.map((n) => n.uuid).toSet();
+
+    for (var node in allToMove) {
+      nodesData.add({
+        'uuid': node.uuid,
+        'name': node.name,
+        'description': node.description,
+      });
+      for (var child in node.children) {
+        if (movedUuids.contains(child.uuid)) {
+          edgesData.add({
+            'parent': node.uuid,
+            'child': child.uuid,
+          });
+        }
+      }
+    }
+
+    // 3. Remove from source
+    sourceGraph.removeNodes(allToMove);
+
+    // 4. Add to target
+    targetGraph.importNodes(nodesData, edgesData);
+    
+    // 5. Cleanup
+    notifyListeners();
+  }
 }

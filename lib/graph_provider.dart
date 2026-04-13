@@ -322,4 +322,40 @@ class GraphProvider extends ChangeNotifier {
     }
     return visited.length;
   }
+
+  void importNodes(List<Map<String, dynamic>> nodesData, List<Map<String, String>> edgesData) {
+    Map<String, CategoryNode> directory = {};
+    
+    for (var json in nodesData) {
+      var node = CategoryNode(
+        json['name'].toString(),
+        uuid: json['uuid']?.toString(),
+        description: json['description']?.toString(),
+      );
+      directory[node.uuid] = node;
+    }
+    
+    for (var edge in edgesData) {
+      String parentId = edge['parent']!;
+      String childId = edge['child']!;
+      var parentNode = directory[parentId];
+      var childNode = directory[childId];
+      
+      if (parentNode != null && childNode != null) {
+        parentNode.children.add(childNode);
+        childNode.parents.add(parentNode);
+      }
+    }
+    
+    Set<CategoryNode> newRoots = {};
+    for (var node in directory.values) {
+      if (node.parents.isEmpty) {
+        newRoots.add(node);
+        _rootNodes.add(node);
+      }
+    }
+    
+    updateDepths(newRoots.isEmpty ? Set.from(directory.values) : newRoots);
+    saveGraph();
+  }
 }

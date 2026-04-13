@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -65,12 +66,15 @@ class TasksScreenContent extends StatefulWidget {
 }
 
 class _TasksScreenContentState extends State<TasksScreenContent> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
   String? _lastGraphId;
+  Timer? _drawerHoverTimer;
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _drawerHoverTimer?.cancel();
     super.dispose();
   }
 
@@ -103,6 +107,7 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
         if (uiState.editingNode != null) uiState.stopEditing();
       },
       child: Scaffold(
+        key: _scaffoldKey,
         drawer: const WorkflowsDrawer(),
         appBar: AppBar(
         title: const _SearchBar(),
@@ -346,7 +351,7 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
                   var workflow = workflowsProvider.workflows[index];
                   bool isSelected = workflow.id == workflowsProvider.currentWorkflowId;
                   bool isEditing = workflow.id == _editingWorkflowId;
-                  return ListTile(
+                  final tile = ListTile(
                     leading: Icon(isSelected ? Icons.folder_open : Icons.folder),
                     title: isEditing 
                       ? _InlineWorkflowEditor(
@@ -379,6 +384,24 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
                         _attemptDelete(context, workflow.id, workflow.name, workflowsProvider);
                       },
                     ) : null,
+                  );
+
+                  return DragTarget<List<CategoryNode>>(
+                    onWillAcceptWithDetails: (details) => !isSelected,
+                    onAcceptWithDetails: (details) {
+                      workflowsProvider.moveNodes(details.data.toSet(), workflow.id);
+                      context.read<UIStateProvider>().stopDragging();
+                      Scaffold.of(context).closeDrawer();
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      bool isHovered = candidateData.isNotEmpty;
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: isHovered ? Colors.blueAccent.withOpacity(0.1) : null,
+                        ),
+                        child: tile,
+                      );
+                    },
                   );
                 },
               ),
@@ -471,6 +494,58 @@ class GraphBody extends StatefulWidget {
 
 class _GraphBodyState extends State<GraphBody> {
   late VoidCallback _onScroll;
+  Timer? _scrollTimer;
+  Timer? _drawerHoverTimer;
+  Offset? _lastPointerPos;
+
+  void _startScrollTimer(double delta) {
+    if (_scrollTimer != null) return;
+    _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      if (!widget.scrollController.hasClients) return;
+      double newOffset = widget.scrollController.offset + delta;
+      newOffset = newOffset.clamp(0.0, widget.scrollController.position.maxScrollExtent);
+      widget.scrollController.jumpTo(newOffset);
+    });
+  }
+
+  void _stopScrollTimer() {
+    _scrollTimer?.cancel();
+    _scrollTimer = null;
+  }
+
+  void _handlePointerMove(PointerMoveEvent event, UIStateProvider uiState) {
+    if (!uiState.isDragging) {
+      _stopScrollTimer();
+      _drawerHoverTimer?.cancel();
+      _drawerHoverTimer = null;
+      return;
+    }
+
+    _lastPointerPos = event.localPosition;
+    double x = event.localPosition.dx;
+    double screenWidth = MediaQuery.of(context).size.width;
+    const double scrollThreshold = 80.0;
+    const double drawerThreshold = 30.0;
+
+    // Sidebar hover
+    if (x < drawerThreshold) {
+      _drawerHoverTimer ??= Timer(const Duration(milliseconds: 400), () {
+        Scaffold.of(context).openDrawer();
+      });
+    } else {
+      _drawerHoverTimer?.cancel();
+      _drawerHoverTimer = null;
+    }
+
+    // Auto-scroll
+    if (x < scrollThreshold) {
+      _startScrollTimer(-5.0);
+    } else if (x > screenWidth - scrollThreshold) {
+      _startScrollTimer(5.0);
+    } else {
+      _stopScrollTimer();
+    }
+  }
 
   @override
   void initState() {
@@ -482,6 +557,8 @@ class _GraphBodyState extends State<GraphBody> {
   @override
   void dispose() {
     widget.scrollController.removeListener(_onScroll);
+    _scrollTimer?.cancel();
+    _drawerHoverTimer?.cancel();
     super.dispose();
   }
 
@@ -513,7 +590,14 @@ class _GraphBodyState extends State<GraphBody> {
             setState(() {});
             return false;
           },
-          child: GestureDetector(
+          child: Listener(
+            onPointerMove: (e) => _handlePointerMove(e, uiState),
+            onPointerUp: (_) {
+               _stopScrollTimer();
+               _drawerHoverTimer?.cancel();
+               _drawerHoverTimer = null;
+            },
+            child: GestureDetector(
           onTap: () {
             uiState.clearSelection();
             if (uiState.editingNode != null) uiState.stopEditing();
@@ -564,7 +648,7 @@ class _GraphBodyState extends State<GraphBody> {
               ),
             ),
           ],
-        )));  // Stack, GestureDetector, NotificationListener
+        ))));  // Stack, GestureDetector, Listener, NotificationListener
       }
     );
   }
