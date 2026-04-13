@@ -77,8 +77,8 @@ class _NodeCardState extends State<NodeCard> {
             : null,
         child: InkWell(
           canRequestFocus: false,
-          onTap: overrideNode == null ? () => _handleTap(graph) : null,
-          onLongPress: overrideNode == null ? () => uiState.startEditing(widget.node) : null,
+          onTap: (overrideNode == null && uiState.editingNode != targetNode) ? () => _handleTap(graph) : null,
+          onLongPress: (overrideNode == null && uiState.editingNode != targetNode) ? () => uiState.startEditing(widget.node) : null,
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
