@@ -145,6 +145,22 @@ class WorkflowsProvider extends ChangeNotifier {
     return newWorkflow;
   }
 
+  /// Imports one or more workflows from a JSON string (supports multi-workflow format).
+  /// Returns the number of successfully imported workflows.
+  Future<int> importWorkflows(String jsonString) async {
+    List<WorkflowMeta> newWorkflows = await _storageService.importWorkflows(jsonString);
+    if (newWorkflows.isNotEmpty) {
+      _workflows.addAll(newWorkflows);
+      _currentWorkflowId = newWorkflows.first.id;
+      for (var w in newWorkflows) {
+        _ensureGraphProvider(w.id);
+      }
+      await _saveWorkflows();
+      notifyListeners();
+    }
+    return newWorkflows.length;
+  }
+
   void moveNodes(Set<CategoryNode> nodesToMove, String targetWorkflowId) {
     if (_currentWorkflowId == null || _currentWorkflowId == targetWorkflowId) return;
     

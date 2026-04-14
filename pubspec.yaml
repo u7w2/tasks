@@ -1,4 +1,4 @@
-name: Tasks
+name: tasks
 description: "A graph based task manager"
 publish_to: 'none'
 version: 0.2.1

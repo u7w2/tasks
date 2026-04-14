@@ -80,36 +80,59 @@ class StorageService {
     return jsonEncode(exportData);
   }
 
-  /// Imports a workflow from a JSON string, returns a mapped meta object representing the new workflow mapping
-  Future<WorkflowMeta?> importWorkflow(String jsonString) async {
+  /// Exports multiple workflows into a single combined JSON string
+  Future<String> exportWorkflows(List<WorkflowMeta> metas) async {
+    List<Map<String, dynamic>> workflowsData = [];
+    for (var meta in metas) {
+      Map<String, dynamic> graphData = await loadGraphData(meta.id) ?? {'nodes': [], 'edges': []};
+      workflowsData.add({'workflow': meta.toJson(), 'graph': graphData});
+    }
+    return jsonEncode({'schema_version': "0.3.0", 'workflows': workflowsData});
+  }
+
+  /// Imports a workflow from a JSON string — supports both single and multi-workflow formats.
+  /// Returns a list of imported WorkflowMeta objects.
+  Future<List<WorkflowMeta>> importWorkflows(String jsonString) async {
     try {
       Map<String, dynamic> parsed = jsonDecode(jsonString);
-      
-      // Check for required components
-      if (!parsed.containsKey('workflow') || !parsed.containsKey('graph')) {
-        debugPrint("Import failed: Missing 'workflow' or 'graph' data.");
-        return null;
-      }
-      
-      // We can use this version number later to migrate data if the format changes
-      int version = parsed['schema_version'] ?? 0;
-      debugPrint("Importing workflow with schema version: $version");
+      List<WorkflowMeta> results = [];
 
-      Map<String, dynamic> metaJson = parsed['workflow'];
-      Map<String, dynamic> graphData = parsed['graph'];
-      
+      if (parsed.containsKey('workflows')) {
+        // Multi-workflow format (schema 0.3.0+)
+        for (var wd in parsed['workflows'] as List) {
+          final meta = await _importSingle(wd['workflow'], wd['graph']);
+          if (meta != null) results.add(meta);
+        }
+      } else if (parsed.containsKey('workflow') && parsed.containsKey('graph')) {
+        // Legacy single-workflow format
+        final meta = await _importSingle(parsed['workflow'], parsed['graph']);
+        if (meta != null) results.add(meta);
+      } else {
+        debugPrint("Import failed: unrecognised format.");
+      }
+      return results;
+    } catch (e) {
+      debugPrint("Error importing workflows: $e");
+      return [];
+    }
+  }
+
+  Future<WorkflowMeta?> _importSingle(Map<String, dynamic> metaJson, Map<String, dynamic> graphData) async {
+    try {
       String newId = const Uuid().v4();
-      
       String baseName = metaJson['name'] ?? 'Imported Workflow';
       WorkflowMeta meta = WorkflowMeta(id: newId, name: baseName);
-      
-      // Save the graph data immediately under the new ID
       await saveGraphData(newId, graphData);
-      
       return meta;
     } catch (e) {
-      debugPrint("Error importing workflow: $e");
+      debugPrint("Error saving imported graph: $e");
       return null;
     }
+  }
+
+  /// Legacy single-workflow import — kept for backwards compatibility.
+  Future<WorkflowMeta?> importWorkflow(String jsonString) async {
+    final results = await importWorkflows(jsonString);
+    return results.isNotEmpty ? results.first : null;
   }
 }

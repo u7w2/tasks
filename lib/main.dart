@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
 
 import 'graph_provider.dart';
 import 'ui_state_provider.dart';
@@ -136,58 +135,88 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) async {
               if (value == 'export') {
-                try {
-                  var currentMeta = workflows.workflows.firstWhere((w) => w.id == workflows.currentWorkflowId);
-                  String jsonString = await StorageService().exportWorkflow(currentMeta);
-
-                  // Write to a temp file so share_plus can attach it
-                  final dir = await getTemporaryDirectory();
-                  final safeFileName = currentMeta.name.replaceAll(RegExp(r'[^\w\s\-]'), '_');
-                  final file = File('${dir.path}/$safeFileName.json');
-                  await file.writeAsString(jsonString);
-
-                  final xFile = XFile(file.path, mimeType: 'application/json');
-                  await SharePlus.instance.share(
-                    ShareParams(
-                      files: [xFile],
-                      subject: currentMeta.name,
+                // Let user pick which workflows to export
+                final allWorkflows = workflows.workflows;
+                final List<bool> checked = List.filled(allWorkflows.length, false);
+                final selected = await showDialog<List<WorkflowMeta>>(
+                  context: context,
+                  builder: (ctx) => StatefulBuilder(
+                    builder: (ctx, setState) => AlertDialog(
+                      title: const Text('Select workflows to export'),
+                      content: SizedBox(
+                        width: double.maxFinite,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: allWorkflows.length,
+                          itemBuilder: (_, i) => CheckboxListTile(
+                            title: Text(allWorkflows[i].name),
+                            value: checked[i],
+                            onChanged: (v) => setState(() => checked[i] = v ?? false),
+                          ),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                        TextButton(
+                          onPressed: checked.contains(true)
+                              ? () => Navigator.pop(ctx, [
+                                  for (int i = 0; i < allWorkflows.length; i++)
+                                    if (checked[i]) allWorkflows[i]
+                                ])
+                              : null,
+                          child: const Text('Export'),
+                        ),
+                      ],
                     ),
-                  );
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to export: $e')),
-                    );
-                  }
-                }
-              } else if (value == 'import') {
-                FilePickerResult? result = await FilePicker.pickFiles(
-                  dialogTitle: 'Import Workflow',
-                  type: FileType.custom,
-                  allowedExtensions: ['json'],
-                  withData: true, // read bytes directly — avoids path issues on iOS
+                  ),
                 );
-                if (result != null && result.files.single.bytes != null) {
+                if (selected != null && selected.isNotEmpty && context.mounted) {
                   try {
-                    String jsonString = String.fromCharCodes(result.files.single.bytes!);
-                    var imported = await workflows.importWorkflow(jsonString);
-                    if (context.mounted) {
-                      if (imported != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Workflow imported successfully')),
-                        );
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Failed to parse workflow file')),
-                        );
-                      }
+                    final jsonString = await StorageService().exportWorkflows(selected);
+                    final bytes = Uint8List.fromList(utf8.encode(jsonString));
+                    final outputPath = await FilePicker.saveFile(
+                      dialogTitle: 'Save exported workflows',
+                      fileName: 'workflows_export.json',
+                      type: FileType.custom,
+                      allowedExtensions: ['json'],
+                      bytes: bytes,
+                    );
+                    if (outputPath != null && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Exported ${selected.length} workflow${selected.length == 1 ? '' : 's'}')),
+                      );
                     }
                   } catch (e) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error importing: $e')),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
                     }
+                  }
+                }
+              } else if (value == 'import') {
+                final result = await FilePicker.pickFiles(
+                  dialogTitle: 'Import Workflows',
+                  type: FileType.custom,
+                  allowedExtensions: ['json'],
+                  allowMultiple: true,
+                  withData: true,
+                );
+                if (result != null) {
+                  int total = 0;
+                  for (final picked in result.files) {
+                    if (picked.bytes == null) continue;
+                    try {
+                      final jsonString = String.fromCharCodes(picked.bytes!);
+                      total += await workflows.importWorkflows(jsonString);
+                    } catch (e) {
+                      debugPrint('Failed to import file ${picked.name}: $e');
+                    }
+                  }
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      total > 0
+                          ? SnackBar(content: Text('Imported $total workflow${total == 1 ? '' : 's'}'))
+                          : const SnackBar(content: Text('No workflows found in selected files')),
+                    );
                   }
                 }
               } else if (value == 'settings') {
@@ -198,8 +227,8 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 'export', child: Text('Export Workflow')),
-              const PopupMenuItem(value: 'import', child: Text('Import Workflow')),
+              const PopupMenuItem(value: 'export', child: Text('Export Workflows')),
+              const PopupMenuItem(value: 'import', child: Text('Import Workflows')),
               const PopupMenuItem(value: 'settings', child: Text('Settings')),
             ],
           ),
