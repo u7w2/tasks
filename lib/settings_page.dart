@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -39,17 +40,33 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return PlatformScaffold(
+      appBar: PlatformAppBar(
         title: const Text('Settings'),
       ),
       body: ListView(
         children: [
-          SwitchListTile(
-            title: const Text('Ask confirmation to delete workflow'),
-            subtitle: const Text('Show a confirmation dialog before deleting an entire workflow'),
-            value: _askConfirmation,
-            onChanged: _toggleConfirmation,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Ask confirmation to delete workflow', style: TextStyle(fontSize: 16)),
+                      SizedBox(height: 4),
+                      Text('Show a confirmation dialog before deleting an entire workflow', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+                PlatformSwitch(
+                  value: _askConfirmation,
+                  onChanged: _toggleConfirmation,
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:provider/provider.dart';
 import '../graph_provider.dart';
 import '../ui_state_provider.dart';
@@ -285,18 +286,23 @@ class _InlineEditorState extends State<_InlineEditor> {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
+    return PlatformTextField(
       controller: _controller,
       focusNode: _focusNode,
       onSubmitted: (_) => _submit(),
       onTapOutside: (_) => _submit(),
-      decoration: const InputDecoration(
-        isDense: true,
-        contentPadding: EdgeInsets.zero,
-        border: InputBorder.none,
+      material: (_, _) => MaterialTextFieldData(
+        decoration: const InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.zero,
+          border: InputBorder.none,
+        ),
+      ),
+      cupertino: (_, _) => CupertinoTextFieldData(
+        padding: EdgeInsets.zero,
+        decoration: null,
       ),
       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-      cursorColor: Colors.blueAccent,
     );
   }
 }
