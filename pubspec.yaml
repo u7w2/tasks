@@ -1,7 +1,7 @@
 name: tasks
 description: "A graph based task manager"
 publish_to: 'none'
-version: 0.2.1
+version: 0.2.2
 
 environment:
   sdk: ^3.11.0
@@ -17,6 +17,7 @@ dependencies:
   share_plus: ^12.0.2
   shared_preferences: ^2.5.5
   uuid: ^4.5.3
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:

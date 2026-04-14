@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'workflows_provider.dart';
 
@@ -70,9 +71,10 @@ class StorageService {
   /// Exports a workflow and its graph data into a single combined JSON string
   Future<String> exportWorkflow(WorkflowMeta meta) async {
     Map<String, dynamic> graphData = await loadGraphData(meta.id) ?? {'nodes': [], 'edges': []};
+    final version = (await PackageInfo.fromPlatform()).version;
     
     Map<String, dynamic> exportData = {
-      'schema_version': "0.2.1",
+      'schema_version': version,
       'workflow': meta.toJson(),
       'graph': graphData,
     };
@@ -83,11 +85,13 @@ class StorageService {
   /// Exports multiple workflows into a single combined JSON string
   Future<String> exportWorkflows(List<WorkflowMeta> metas) async {
     List<Map<String, dynamic>> workflowsData = [];
+    final version = (await PackageInfo.fromPlatform()).version;
+
     for (var meta in metas) {
       Map<String, dynamic> graphData = await loadGraphData(meta.id) ?? {'nodes': [], 'edges': []};
       workflowsData.add({'workflow': meta.toJson(), 'graph': graphData});
     }
-    return jsonEncode({'schema_version': "0.3.0", 'workflows': workflowsData});
+    return jsonEncode({'schema_version': version, 'workflows': workflowsData});
   }
 
   /// Imports a workflow from a JSON string — supports both single and multi-workflow formats.
