@@ -19,7 +19,7 @@ Pre-compiled binaries are available for both mobile platforms:
 1. Go to the [Releases](https://github.com/u7w2/tasks/releases) section of this repository.
 2. Download the appropriate file for your device:
    - **Android**: Download the `.apk` file and install it on your device.
-   - **iOS**: Download the `.app` file (Note: iOS builds are for testing/sideloading only).
+   - **iOS**: You'll have to compile this yourself by cloning this repository and building the app using Flutter SDK.
 
 ## Platform Compatibility
 
