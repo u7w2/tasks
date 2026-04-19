@@ -2,7 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/cupertino.dart' show CupertinoThemeData, CupertinoIcons, CupertinoActionSheet, CupertinoActionSheetAction, DefaultCupertinoLocalizations, CupertinoColors;
+import 'package:flutter/cupertino.dart'
+    show
+        CupertinoThemeData,
+        CupertinoIcons,
+        CupertinoActionSheet,
+        CupertinoActionSheetAction,
+        DefaultCupertinoLocalizations,
+        CupertinoColors;
 import 'package:flutter/material.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 import 'package:provider/provider.dart';
@@ -10,8 +17,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'graph_provider.dart';
 import 'ui_state_provider.dart';
+import 'ai_generator_service.dart';
 import 'widgets/depth_column.dart';
 import 'widgets/line_painter.dart';
+import 'widgets/node_card.dart';
+import 'widgets/magic_dialog.dart';
 import 'workflows_provider.dart';
 import 'settings_page.dart';
 import 'storage_service.dart';
@@ -60,7 +70,9 @@ class TasksScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     var workflows = context.watch<WorkflowsProvider>();
     if (!workflows.isLoaded || workflows.currentGraph == null) {
-      return PlatformScaffold(body: Center(child: PlatformCircularProgressIndicator()));
+      return PlatformScaffold(
+        body: Center(child: PlatformCircularProgressIndicator()),
+      );
     }
     var graph = workflows.currentGraph!;
 
@@ -108,10 +120,7 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
     if (graph.selectedNodes.isNotEmpty) {
       parentNodes = graph.selectedNodes.toSet();
     }
-    var newNode = graph.addNode(
-      "New Task",
-      parents: parentNodes,
-    );
+    var newNode = graph.addNode("New Task", parents: parentNodes);
     graph.clearSelection();
     graph.toggleSelection(newNode);
 
@@ -119,7 +128,10 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
       bool needsScroll = false;
       if (_scrollController.hasClients) {
         int targetDepth = newNode.depth ?? 0;
-        double targetScroll = (targetDepth * 120.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+        double targetScroll = (targetDepth * 120.0).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        );
         needsScroll = (targetScroll - _scrollController.offset).abs() > 1.0;
         if (needsScroll) {
           _scrollController.animateTo(
@@ -132,10 +144,10 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
 
       if (needsScroll) {
         Future.delayed(const Duration(milliseconds: 320), () {
-          uiState.startEditing(newNode);
+          showTaskEditor(context, newNode);
         });
       } else {
-        uiState.startEditing(newNode);
+        showTaskEditor(context, newNode);
       }
     });
   }
@@ -146,7 +158,10 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
     var graph = context.watch<GraphProvider>();
     var uiState = context.watch<UIStateProvider>();
 
-    bool hasActiveState = graph.selectedNodes.isNotEmpty || uiState.editingNode != null || uiState.searchQuery.isNotEmpty;
+    bool hasActiveState =
+        graph.selectedNodes.isNotEmpty ||
+        uiState.editingNode != null ||
+        uiState.searchQuery.isNotEmpty;
 
     return PopScope(
       canPop: !hasActiveState,
@@ -160,120 +175,163 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
         widgetKey: _scaffoldKey,
         material: (_, _) => MaterialScaffoldData(
           drawer: const WorkflowsDrawer(),
-          floatingActionButton: FloatingActionButton(
-            child: const Icon(Icons.add),
-            onPressed: () => _addNewTask(graph, uiState),
+          floatingActionButton: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton(
+                heroTag: 'magic',
+                backgroundColor: Colors.white,
+                child: const Icon(
+                  Icons.auto_awesome,
+                  color: Colors.purpleAccent,
+                ),
+                onPressed: () => _showMagicDialog(context, graph),
+              ),
+              const SizedBox(width: 12),
+              FloatingActionButton(
+                heroTag: 'add',
+                child: const Icon(Icons.add),
+                onPressed: () => _addNewTask(graph, uiState),
+              ),
+            ],
           ),
         ),
         appBar: PlatformAppBar(
-          leading: isCupertino(context) 
-            ? PlatformIconButton(
-                padding: EdgeInsets.zero,
-                icon: const Icon(CupertinoIcons.bars),
-                onPressed: () => showPlatformModalSheet(
-                  context: context,
-                  builder: (_) => const WorkflowsDrawer(),
-                ),
-              )
-            : null,
+          leading: isCupertino(context)
+              ? PlatformIconButton(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(CupertinoIcons.bars),
+                  onPressed: () => showPlatformModalSheet(
+                    context: context,
+                    builder: (_) => const WorkflowsDrawer(),
+                  ),
+                )
+              : null,
           title: const _SearchBar(),
-        trailingActions: [
-          if (graph.canUndo)
-            PlatformIconButton(
-              padding: EdgeInsets.zero,
-              icon: PlatformWidget(
-                material: (_, _) => const Icon(Icons.undo),
-                cupertino: (_, _) => const Icon(CupertinoIcons.arrow_uturn_left),
+          trailingActions: [
+            if (graph.canUndo)
+              PlatformIconButton(
+                padding: EdgeInsets.zero,
+                icon: PlatformWidget(
+                  material: (_, _) => const Icon(Icons.undo),
+                  cupertino: (_, _) =>
+                      const Icon(CupertinoIcons.arrow_uturn_left),
+                ),
+                onPressed: () => graph.undo(),
               ),
-              onPressed: () => graph.undo(),
-            ),
-        if (graph.selectedNodes.length == 1)
-          PlatformIconButton(
-            padding: EdgeInsets.zero,
-            icon: Icon(PlatformIcons(context).edit),
-            onPressed: () => uiState.startEditing(graph.selectedNodes.first),
-          ),
-        if (graph.selectedNodes.isNotEmpty)
-          PlatformIconButton(
-            padding: EdgeInsets.zero,
-            icon: Icon(PlatformIcons(context).delete),
-            onPressed: () {
-              var nodesToDelete = graph.selectedNodes;
-              graph.removeNodes(nodesToDelete);
-              graph.clearSelection();
-            },
-          ),
-        PlatformWidget(
-          material: (_, _) => PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) async => _handleMenuAction(value, workflows, context),
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'export', child: Text('Export Workflows')),
-              const PopupMenuItem(value: 'import', child: Text('Import Workflows')),
-              const PopupMenuItem(value: 'settings', child: Text('Settings')),
-            ],
-          ),
-          cupertino: (_, _) => PlatformIconButton(
-            padding: EdgeInsets.zero,
-            icon: const Icon(CupertinoIcons.ellipsis),
-            onPressed: () {
-              showPlatformModalSheet(
-                  context: context,
-                  builder: (_) => PlatformWidget(
-                        material: (_, _) => Container(),
-                        cupertino: (_, _) => CupertinoActionSheet(
-                          actions: [
-                            CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _handleMenuAction('export', workflows, context);
-                              },
-                              child: const Text('Export Workflows'),
-                            ),
-                            CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _handleMenuAction('import', workflows, context);
-                              },
-                              child: const Text('Import Workflows'),
-                            ),
-                            CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                _handleMenuAction('settings', workflows, context);
-                              },
-                              child: const Text('Settings'),
-                            ),
-                          ],
-                          cancelButton: CupertinoActionSheetAction(
-                            isDefaultAction: true,
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel'),
+            if (graph.selectedNodes.length == 1)
+              PlatformIconButton(
+                padding: EdgeInsets.zero,
+                icon: Icon(PlatformIcons(context).edit),
+                onPressed: () =>
+                    showTaskEditor(context, graph.selectedNodes.first),
+              ),
+            if (graph.selectedNodes.isNotEmpty)
+              PlatformIconButton(
+                padding: EdgeInsets.zero,
+                icon: Icon(PlatformIcons(context).delete),
+                onPressed: () {
+                  var nodesToDelete = graph.selectedNodes;
+                  graph.removeNodes(nodesToDelete);
+                  graph.clearSelection();
+                },
+              ),
+            PlatformWidget(
+              material: (_, _) => PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert),
+                onSelected: (value) async =>
+                    _handleMenuAction(value, workflows, context),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'export',
+                    child: Text('Export Workflows'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'import',
+                    child: Text('Import Workflows'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'settings',
+                    child: Text('Settings'),
+                  ),
+                ],
+              ),
+              cupertino: (_, _) => PlatformIconButton(
+                padding: EdgeInsets.zero,
+                icon: const Icon(CupertinoIcons.ellipsis),
+                onPressed: () {
+                  showPlatformModalSheet(
+                    context: context,
+                    builder: (_) => PlatformWidget(
+                      material: (_, _) => Container(),
+                      cupertino: (_, _) => CupertinoActionSheet(
+                        actions: [
+                          CupertinoActionSheetAction(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _handleMenuAction('export', workflows, context);
+                            },
+                            child: const Text('Export Workflows'),
                           ),
+                          CupertinoActionSheetAction(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _handleMenuAction('import', workflows, context);
+                            },
+                            child: const Text('Import Workflows'),
+                          ),
+                          CupertinoActionSheetAction(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _handleMenuAction('settings', workflows, context);
+                            },
+                            child: const Text('Settings'),
+                          ),
+                        ],
+                        cancelButton: CupertinoActionSheetAction(
+                          isDefaultAction: true,
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
                         ),
-                      ));
-            },
-          ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            PlatformWidget(
+              cupertino: (_, _) => PlatformIconButton(
+                padding: EdgeInsets.zero,
+                icon: Icon(PlatformIcons(context).add),
+                onPressed: () => _addNewTask(graph, uiState),
+              ),
+              material: (_, _) => const SizedBox(width: 8),
+            ),
+          ],
         ),
-        PlatformWidget(
-          cupertino: (_, _) => PlatformIconButton(
-            padding: EdgeInsets.zero,
-            icon: Icon(PlatformIcons(context).add),
-            onPressed: () => _addNewTask(graph, uiState),
-          ),
-          material: (_, _) => const SizedBox(width: 8),
-        ),
-      ],
-    ),
-    body: GraphBody(scrollController: _scrollController),
-  ),
-);
+        body: GraphBody(scrollController: _scrollController),
+      ),
+    );
   }
 
-  Future<void> _handleMenuAction(String value, WorkflowsProvider workflows, BuildContext context) async {
+  void _showMagicDialog(BuildContext context, GraphProvider graph) {
+    showPlatformDialog(
+      context: context,
+      builder: (_) => MagicDialog(graph: graph),
+    );
+  }
+
+  Future<void> _handleMenuAction(
+    String value,
+    WorkflowsProvider workflows,
+    BuildContext context,
+  ) async {
     if (value == 'export') {
       final allWorkflows = workflows.workflows;
-      final selected = await _showWorkflowSelectionDialog(context, allWorkflows);
+      final selected = await _showWorkflowSelectionDialog(
+        context,
+        allWorkflows,
+      );
 
       if (selected != null && selected.isNotEmpty && context.mounted) {
         try {
@@ -288,12 +346,18 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
           );
           if (outputPath != null && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Exported ${selected.length} workflow${selected.length == 1 ? '' : 's'}')),
+              SnackBar(
+                content: Text(
+                  'Exported ${selected.length} workflow${selected.length == 1 ? '' : 's'}',
+                ),
+              ),
             );
           }
         } catch (e) {
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
           }
         }
       }
@@ -319,20 +383,32 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             total > 0
-                ? SnackBar(content: Text('Imported $total workflow${total == 1 ? '' : 's'}'))
-                : const SnackBar(content: Text('No workflows found in selected files')),
+                ? SnackBar(
+                    content: Text(
+                      'Imported $total workflow${total == 1 ? '' : 's'}',
+                    ),
+                  )
+                : const SnackBar(
+                    content: Text('No workflows found in selected files'),
+                  ),
           );
         }
       }
     } else if (value == 'settings') {
       Navigator.push(
         context,
-        platformPageRoute(context: context, builder: (context) => const SettingsPage()),
+        platformPageRoute(
+          context: context,
+          builder: (context) => const SettingsPage(),
+        ),
       );
     }
   }
 
-  Future<List<WorkflowMeta>?> _showWorkflowSelectionDialog(BuildContext context, List<WorkflowMeta> allWorkflows) async {
+  Future<List<WorkflowMeta>?> _showWorkflowSelectionDialog(
+    BuildContext context,
+    List<WorkflowMeta> allWorkflows,
+  ) async {
     final List<bool> checked = List.filled(allWorkflows.length, false);
 
     return showPlatformModalSheet<List<WorkflowMeta>>(
@@ -341,7 +417,9 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
         builder: (ctx, setState) => Container(
           height: MediaQuery.of(context).size.height * 0.6,
           decoration: BoxDecoration(
-            color: isMaterial(context) ? Theme.of(context).canvasColor : CupertinoColors.systemBackground.resolveFrom(context),
+            color: isMaterial(context)
+                ? Theme.of(context).canvasColor
+                : CupertinoColors.systemBackground.resolveFrom(context),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
           child: Material(
@@ -378,9 +456,9 @@ class _TasksScreenContentState extends State<TasksScreenContent> {
                       PlatformElevatedButton(
                         onPressed: checked.contains(true)
                             ? () => Navigator.pop(ctx, [
-                                  for (int i = 0; i < allWorkflows.length; i++)
-                                    if (checked[i]) allWorkflows[i]
-                                ])
+                                for (int i = 0; i < allWorkflows.length; i++)
+                                  if (checked[i]) allWorkflows[i],
+                              ])
                             : null,
                         child: const Text('Export'),
                       ),
@@ -437,7 +515,12 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
     }
   }
 
-  Future<void> _attemptDelete(BuildContext context, String workflowId, String workflowName, WorkflowsProvider provider) async {
+  Future<void> _attemptDelete(
+    BuildContext context,
+    String workflowId,
+    String workflowName,
+    WorkflowsProvider provider,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     bool doNotShow = prefs.getBool('hide_delete_workflow_prompt') ?? false;
 
@@ -453,51 +536,56 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
     await showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder(builder: (context, setState) {
-          return PlatformAlertDialog(
-            title: const Text("Delete Workflow"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text("Are you sure you want to delete '$workflowName'?"),
-                const SizedBox(height: 16),
-                Material(
-                  color: Colors.transparent,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Checkbox(
-                        value: rememberChoice,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            rememberChoice = value ?? false;
-                          });
-                        },
-                      ),
-                      const Expanded(child: Text("Do not show again")),
-                    ],
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return PlatformAlertDialog(
+              title: const Text("Delete Workflow"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text("Are you sure you want to delete '$workflowName'?"),
+                  const SizedBox(height: 16),
+                  Material(
+                    color: Colors.transparent,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Checkbox(
+                          value: rememberChoice,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              rememberChoice = value ?? false;
+                            });
+                          },
+                        ),
+                        const Expanded(child: Text("Do not show again")),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                PlatformDialogAction(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                PlatformDialogAction(
+                  onPressed: () {
+                    if (rememberChoice) {
+                      prefs.setBool('hide_delete_workflow_prompt', true);
+                    }
+                    provider.deleteWorkflow(workflowId);
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                    "Delete",
+                    style: TextStyle(color: Colors.red),
                   ),
                 ),
               ],
-            ),
-            actions: [
-              PlatformDialogAction(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel"),
-              ),
-              PlatformDialogAction(
-                onPressed: () {
-                  if (rememberChoice) {
-                    prefs.setBool('hide_delete_workflow_prompt', true);
-                  }
-                  provider.deleteWorkflow(workflowId);
-                  Navigator.pop(context);
-                },
-                child: const Text("Delete", style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          );
-        });
+            );
+          },
+        );
       },
     );
   }
@@ -505,101 +593,124 @@ class _WorkflowsDrawerState extends State<WorkflowsDrawer> {
   @override
   Widget build(BuildContext context) {
     var workflowsProvider = context.watch<WorkflowsProvider>();
-    
-    Widget content(BuildContext context) => Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                'Workflows',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                itemCount: workflowsProvider.workflows.length,
-                itemBuilder: (context, index) {
-                  var workflow = workflowsProvider.workflows[index];
-                  bool isSelected = workflow.id == workflowsProvider.currentWorkflowId;
-                  bool isEditing = workflow.id == _editingWorkflowId;
-                  final tile = ListTile(
-                    leading: Icon(isSelected ? Icons.folder_open : Icons.folder),
-                    title: isEditing 
-                      ? _InlineWorkflowEditor(
-                          workflowId: workflow.id,
-                          initialName: workflow.name,
-                          onComplete: (newName) {
-                            final provider = context.read<WorkflowsProvider>();
-                            if (newName.trim().isNotEmpty) {
-                              provider.updateWorkflowName(workflow.id, newName.trim());
-                            }
-                            // If this workflow isn't current yet, switch to it now
-                            if (provider.currentWorkflowId != workflow.id) {
-                              provider.switchWorkflow(workflow.id);
-                            }
-                            _stopEditing();
-                          },
-                        ) 
-                      : Text(
-                          workflow.name,
-                          style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
-                        ),
-                    selected: isSelected,
-                    onTap: () {
-                      if (isEditing) return;
-                      workflowsProvider.switchWorkflow(workflow.id);
-                      Navigator.pop(context);
-                    },
-                    onLongPress: () {
-                      _startEditing(workflow.id);
-                    },
-                    trailing: isSelected ? IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () {
-                        _attemptDelete(context, workflow.id, workflow.name, workflowsProvider);
-                      },
-                    ) : null,
-                  );
 
-                  return DragTarget<List<CategoryNode>>(
-                    onWillAcceptWithDetails: (details) => !isSelected,
-                    onAcceptWithDetails: (details) {
-                      workflowsProvider.moveNodes(details.data.toSet(), workflow.id);
-                      var uiState = context.read<UIStateProvider>();
-                      uiState.stopDragging();
-                      Navigator.pop(context);
-                    },
-                    builder: (context, candidateData, rejectedData) {
-                      bool isHovered = candidateData.isNotEmpty;
-                      return Container(
-                        decoration: BoxDecoration(
-                          color: isHovered ? Colors.blueAccent.withValues(alpha: 0.1) : null,
+    Widget content(BuildContext context) => Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text(
+            'Workflows',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            itemCount: workflowsProvider.workflows.length,
+            itemBuilder: (context, index) {
+              var workflow = workflowsProvider.workflows[index];
+              bool isSelected =
+                  workflow.id == workflowsProvider.currentWorkflowId;
+              bool isEditing = workflow.id == _editingWorkflowId;
+              final tile = ListTile(
+                leading: Icon(isSelected ? Icons.folder_open : Icons.folder),
+                title: isEditing
+                    ? _InlineWorkflowEditor(
+                        workflowId: workflow.id,
+                        initialName: workflow.name,
+                        onComplete: (newName) {
+                          final provider = context.read<WorkflowsProvider>();
+                          if (newName.trim().isNotEmpty) {
+                            provider.updateWorkflowName(
+                              workflow.id,
+                              newName.trim(),
+                            );
+                          }
+                          // If this workflow isn't current yet, switch to it now
+                          if (provider.currentWorkflowId != workflow.id) {
+                            provider.switchWorkflow(workflow.id);
+                          }
+                          _stopEditing();
+                        },
+                      )
+                    : Text(
+                        workflow.name,
+                        style: TextStyle(
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
-                        child: tile,
-                      );
-                    },
+                      ),
+                selected: isSelected,
+                onTap: () {
+                  if (isEditing) return;
+                  workflowsProvider.switchWorkflow(workflow.id);
+                  Navigator.pop(context);
+                },
+                onLongPress: () {
+                  _startEditing(workflow.id);
+                },
+                trailing: isSelected
+                    ? IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {
+                          _attemptDelete(
+                            context,
+                            workflow.id,
+                            workflow.name,
+                            workflowsProvider,
+                          );
+                        },
+                      )
+                    : null,
+              );
+
+              return DragTarget<List<CategoryNode>>(
+                onWillAcceptWithDetails: (details) => !isSelected,
+                onAcceptWithDetails: (details) {
+                  workflowsProvider.moveNodes(
+                    details.data.toSet(),
+                    workflow.id,
+                  );
+                  var uiState = context.read<UIStateProvider>();
+                  uiState.stopDragging();
+                  Navigator.pop(context);
+                },
+                builder: (context, candidateData, rejectedData) {
+                  bool isHovered = candidateData.isNotEmpty;
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: isHovered
+                          ? Colors.blueAccent.withValues(alpha: 0.1)
+                          : null,
+                    ),
+                    child: tile,
                   );
                 },
-              ),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text("New Workflow"),
-              onTap: () {
-                // createNewWorkflow switches to the new workflow and notifies listeners.
-                // We do NOT close the sheet — we let the user name it first.
-                final newId = workflowsProvider.createNewWorkflow(switchToNew: false);
-                _startEditing(newId);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        );
+              );
+            },
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.add),
+          title: const Text("New Workflow"),
+          onTap: () {
+            // createNewWorkflow switches to the new workflow and notifies listeners.
+            // We do NOT close the sheet — we let the user name it first.
+            final newId = workflowsProvider.createNewWorkflow(
+              switchToNew: false,
+            );
+            _startEditing(newId);
+          },
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
 
     return PlatformWidget(
-      material: (context, _) => Drawer(child: SafeArea(child: content(context))),
+      material: (context, _) =>
+          Drawer(child: SafeArea(child: content(context))),
       cupertino: (context, _) => Container(
         height: MediaQuery.of(context).size.height * 0.8,
         decoration: BoxDecoration(
@@ -638,7 +749,10 @@ class _InlineWorkflowEditorState extends State<_InlineWorkflowEditor> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialName);
-    _controller.selection = TextSelection(baseOffset: 0, extentOffset: widget.initialName.length);
+    _controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: widget.initialName.length,
+    );
     _focusNode = FocusNode();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
@@ -670,10 +784,8 @@ class _InlineWorkflowEditorState extends State<_InlineWorkflowEditor> {
           border: InputBorder.none,
         ),
       ),
-      cupertino: (_, _) => CupertinoTextFieldData(
-        padding: EdgeInsets.zero,
-        decoration: null,
-      ),
+      cupertino: (_, _) =>
+          CupertinoTextFieldData(padding: EdgeInsets.zero, decoration: null),
       style: const TextStyle(fontSize: 16),
     );
   }
@@ -697,7 +809,10 @@ class _GraphBodyState extends State<GraphBody> {
     _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       if (!widget.scrollController.hasClients) return;
       double newOffset = widget.scrollController.offset + delta;
-      newOffset = newOffset.clamp(0.0, widget.scrollController.position.maxScrollExtent);
+      newOffset = newOffset.clamp(
+        0.0,
+        widget.scrollController.position.maxScrollExtent,
+      );
       widget.scrollController.jumpTo(newOffset);
     });
   }
@@ -776,7 +891,7 @@ class _GraphBodyState extends State<GraphBody> {
         return ai.compareTo(bi);
       });
     }
-    
+
     List<int> sortedDepths = depthMap.keys.toList()..sort();
 
     return LayoutBuilder(
@@ -785,8 +900,10 @@ class _GraphBodyState extends State<GraphBody> {
         double defaultColWidth = 120.0;
         int extraCols = sortedDepths.length > 1 ? sortedDepths.length - 1 : 0;
         double calculatedMaxScroll = extraCols * defaultColWidth;
-        
-        double rawScrollOffset = widget.scrollController.hasClients ? widget.scrollController.offset : 0.0;
+
+        double rawScrollOffset = widget.scrollController.hasClients
+            ? widget.scrollController.offset
+            : 0.0;
         double scrollOffset = rawScrollOffset.clamp(0.0, calculatedMaxScroll);
 
         return NotificationListener<ScrollNotification>(
@@ -797,63 +914,76 @@ class _GraphBodyState extends State<GraphBody> {
           child: Listener(
             onPointerMove: (e) => _handlePointerMove(e, uiState),
             onPointerUp: (_) {
-               _stopScrollTimer();
-               _drawerHoverTimer?.cancel();
-               _drawerHoverTimer = null;
+              _stopScrollTimer();
+              _drawerHoverTimer?.cancel();
+              _drawerHoverTimer = null;
             },
             child: GestureDetector(
-          onTap: () {
-            graph.clearSelection();
-            if (uiState.editingNode != null) uiState.stopEditing();
-          },
-          behavior: HitTestBehavior.translucent,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-            CustomPaint(
-              painter: LinePainter(graph, uiState, context),
-            ),
-            SingleChildScrollView(
-              controller: widget.scrollController,
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: sortedDepths.map((depth) {
-                  bool isFirst = depth == sortedDepths.first;
-                  
-                  if (!isFirst) {
-                    return SizedBox(
-                      width: defaultColWidth,
-                      child: DepthColumn(depth: depth, nodes: depthMap[depth]!),
-                    );
-                  }
+              onTap: () {
+                graph.clearSelection();
+                if (uiState.editingNode != null) uiState.stopEditing();
+              },
+              behavior: HitTestBehavior.translucent,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CustomPaint(painter: LinePainter(graph, uiState, context)),
+                  SingleChildScrollView(
+                    controller: widget.scrollController,
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: sortedDepths.map((depth) {
+                        bool isFirst = depth == sortedDepths.first;
 
-                  // FIRST COLUMN LOGIC
-                  // Maintain physical Row size to prevent 2x warped scrolling, while transforming internal layout
-                  double maxOffset = screenWidth > defaultColWidth ? screenWidth - defaultColWidth : 0.0;
-                  double offset = scrollOffset.clamp(0.0, maxOffset);
-                  double visualWidth = (screenWidth - scrollOffset).clamp(defaultColWidth, screenWidth);
+                        if (!isFirst) {
+                          return SizedBox(
+                            width: defaultColWidth,
+                            child: DepthColumn(
+                              depth: depth,
+                              nodes: depthMap[depth]!,
+                            ),
+                          );
+                        }
 
-                  return SizedBox(
-                    width: screenWidth, // Keep layout geometry completely solid
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          left: offset,
-                          width: visualWidth,
-                          top: 0,
-                          bottom: 0,
-                          child: DepthColumn(depth: depth, nodes: depthMap[depth]!),
-                        ),
-                      ],
+                        // FIRST COLUMN LOGIC
+                        // Maintain physical Row size to prevent 2x warped scrolling, while transforming internal layout
+                        double maxOffset = screenWidth > defaultColWidth
+                            ? screenWidth - defaultColWidth
+                            : 0.0;
+                        double offset = scrollOffset.clamp(0.0, maxOffset);
+                        double visualWidth = (screenWidth - scrollOffset).clamp(
+                          defaultColWidth,
+                          screenWidth,
+                        );
+
+                        return SizedBox(
+                          width:
+                              screenWidth, // Keep layout geometry completely solid
+                          child: Stack(
+                            children: [
+                              Positioned(
+                                left: offset,
+                                width: visualWidth,
+                                top: 0,
+                                bottom: 0,
+                                child: DepthColumn(
+                                  depth: depth,
+                                  nodes: depthMap[depth]!,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
                     ),
-                  );
-                 }).toList(),
+                  ),
+                ],
               ),
             ),
-          ],
-        ))));  // Stack, GestureDetector, Listener, NotificationListener
-      }
+          ),
+        ); // Stack, GestureDetector, Listener, NotificationListener
+      },
     );
   }
 }
@@ -935,7 +1065,11 @@ class _SearchBarState extends State<_SearchBar> {
         suffix: _controller.text.isNotEmpty
             ? PlatformIconButton(
                 padding: EdgeInsets.zero,
-                icon: const Icon(CupertinoIcons.clear_circled_solid, color: Colors.grey, size: 20),
+                icon: const Icon(
+                  CupertinoIcons.clear_circled_solid,
+                  color: Colors.grey,
+                  size: 20,
+                ),
                 onPressed: () {
                   _controller.clear();
                   var graph = context.read<GraphProvider>();
