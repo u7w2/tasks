@@ -1,9 +1,37 @@
-
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'storage_service.dart';
 import 'dart:collection';
+import 'package:flutter/material.dart' show Color;
+
+enum TaskPriority {
+  low,
+  medium,
+  high;
+
+  Color get color {
+    switch (this) {
+      case TaskPriority.low:
+        return const Color(0xFF64748B); // Slate
+      case TaskPriority.medium:
+        return const Color(0xFFF59E0B); // Amber
+      case TaskPriority.high:
+        return const Color(0xFF7C3AED); // Claude Purple
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case TaskPriority.low:
+        return 'Low';
+      case TaskPriority.medium:
+        return 'Medium';
+      case TaskPriority.high:
+        return 'High';
+    }
+  }
+}
 
 class CategoryNode {
   static const _uuidGenerator = Uuid();
@@ -14,6 +42,11 @@ class CategoryNode {
 
   String name;
   String? description;
+  bool isCompleted;
+  TaskPriority priority;
+  int? weight;
+  DateTime? dueDate;
+  int? colorValue;
 
   int? depth;
   int? sortIndex;
@@ -25,8 +58,13 @@ class CategoryNode {
     Set<CategoryNode>? children,
     Set<CategoryNode>? parents,
     this.sortIndex,
+    this.isCompleted = false,
+    this.priority = TaskPriority.low,
+    this.weight,
+    this.dueDate,
+    this.colorValue,
   }) : uuid = uuid ?? _uuidGenerator.v4(),
-       children = children ?? {},  
+       children = children ?? {},
        parents = parents ?? {};
 }
 
@@ -64,6 +102,11 @@ class GraphProvider extends ChangeNotifier {
         'name': node.name,
         'description': node.description,
         'sortIndex': node.sortIndex,
+        'isCompleted': node.isCompleted,
+        'priority': node.priority.name,
+        'weight': node.weight,
+        'dueDate': node.dueDate?.toIso8601String(),
+        'colorValue': node.colorValue,
       });
       for (var child in node.children) {
         edgesJson.add({'parent': node.uuid, 'child': child.uuid});
@@ -71,7 +114,9 @@ class GraphProvider extends ChangeNotifier {
     }
     final newSnapshot = {'nodes': nodesJson, 'edges': edgesJson};
     // Don't push if state hasn't changed since last snapshot
-    if (_undoStack.isNotEmpty && jsonEncode(_undoStack.last) == jsonEncode(newSnapshot)) return;
+    if (_undoStack.isNotEmpty &&
+        jsonEncode(_undoStack.last) == jsonEncode(newSnapshot))
+      return;
     _undoStack.add(newSnapshot);
     if (_undoStack.length > _maxUndoStack) _undoStack.removeAt(0);
   }
@@ -88,6 +133,14 @@ class GraphProvider extends ChangeNotifier {
         uuid: json['uuid']?.toString(),
         description: json['description']?.toString(),
         sortIndex: json['sortIndex'] as int?,
+        isCompleted: json['isCompleted'] as bool? ?? false,
+        priority: TaskPriority.values.firstWhere(
+          (p) => p.name == json['priority'],
+          orElse: () => TaskPriority.low,
+        ),
+        weight: json['weight'] as int?,
+        dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
+        colorValue: json['colorValue'] as int?,
       );
       directory[node.uuid] = node;
     }
@@ -110,7 +163,7 @@ class GraphProvider extends ChangeNotifier {
   Future<void> saveGraph() async {
     // Guard: don't overwrite persisted data before loadGraph() has completed
     if (!_isLoaded) return;
-    
+
     List<Map<String, dynamic>> nodesJson = [];
     List<Map<String, String>> edgesJson = [];
 
@@ -120,20 +173,19 @@ class GraphProvider extends ChangeNotifier {
         'name': node.name,
         'description': node.description,
         'sortIndex': node.sortIndex,
+        'isCompleted': node.isCompleted,
+        'priority': node.priority.name,
+        'weight': node.weight,
+        'dueDate': node.dueDate?.toIso8601String(),
+        'colorValue': node.colorValue,
       });
       for (var child in node.children) {
-        edgesJson.add({
-          'parent': node.uuid,
-          'child': child.uuid,
-        });
+        edgesJson.add({'parent': node.uuid, 'child': child.uuid});
       }
     }
-    
-    Map<String, dynamic> data = {
-      'nodes': nodesJson,
-      'edges': edgesJson,
-    };
-    
+
+    Map<String, dynamic> data = {'nodes': nodesJson, 'edges': edgesJson};
+
     await StorageService().saveGraphData(id, data);
   }
 
@@ -143,42 +195,50 @@ class GraphProvider extends ChangeNotifier {
       _isLoaded = true;
       return;
     }
-    
+
     try {
       List<dynamic> nodesJson = data['nodes'];
       List<dynamic> edgesJson = data['edges'];
-      
+
       Map<String, CategoryNode> directory = {};
-      
+
       for (var json in nodesJson) {
         var node = CategoryNode(
           json['name'].toString(),
           uuid: json['uuid']?.toString(),
           description: json['description']?.toString(),
           sortIndex: json['sortIndex'] as int?,
+          isCompleted: json['isCompleted'] as bool? ?? false,
+          priority: TaskPriority.values.firstWhere(
+            (p) => p.name == json['priority'],
+            orElse: () => TaskPriority.low,
+          ),
+          weight: json['weight'] as int?,
+          dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
+          colorValue: json['colorValue'] as int?,
         );
         directory[node.uuid] = node;
       }
-      
+
       for (var edge in edgesJson) {
         String parentId = edge['parent'];
         String childId = edge['child'];
         var parentNode = directory[parentId];
         var childNode = directory[childId];
-        
+
         if (parentNode != null && childNode != null) {
           parentNode.children.add(childNode);
           childNode.parents.add(parentNode);
         }
       }
-      
+
       _rootNodes.clear();
       for (var node in directory.values) {
         if (node.parents.isEmpty) {
           _rootNodes.add(node);
         }
       }
-      
+
       updateDepths(_rootNodes);
     } catch (e) {
       debugPrint("Failed to load graph: $e");
@@ -190,13 +250,22 @@ class GraphProvider extends ChangeNotifier {
   CategoryNode addNode(
     String name, {
     String? description,
+    TaskPriority? priority,
+    int? weight,
+    DateTime? dueDate,
+    int? colorValue,
     Set<CategoryNode>? parents,
     Set<CategoryNode>? children,
+    bool silent = false,
   }) {
-    _pushUndoSnapshot();
+    if (!silent) _pushUndoSnapshot();
     final CategoryNode node = CategoryNode(
       name,
       description: description,
+      priority: priority ?? TaskPriority.low,
+      weight: weight,
+      dueDate: dueDate,
+      colorValue: colorValue,
       parents: parents,
       children: children,
     );
@@ -215,21 +284,23 @@ class GraphProvider extends ChangeNotifier {
   void removeNodes(Set<CategoryNode> nodes) {
     if (nodes.isEmpty) return;
     _pushUndoSnapshot();
-    final snapshot = Set<CategoryNode>.from(nodes); // snapshot in case nodes IS _selectedNodes
-    
+    final snapshot = Set<CategoryNode>.from(
+      nodes,
+    ); // snapshot in case nodes IS _selectedNodes
+
     final Set<CategoryNode> nodesToUpdate = {};
-    
+
     for (var node in snapshot) {
       _rootNodes.remove(node);
       _selectedNodes.remove(node);
-      
+
       final parents = Set<CategoryNode>.from(node.parents);
       final children = Set<CategoryNode>.from(node.children);
-      
+
       for (var parent in parents) {
         parent.children.remove(node);
       }
-      
+
       for (var child in children) {
         child.parents.remove(node);
         if (!snapshot.contains(child)) {
@@ -239,12 +310,12 @@ class GraphProvider extends ChangeNotifier {
           }
         }
       }
-      
+
       for (var parent in parents) {
         if (snapshot.contains(parent)) continue;
         for (var child in children) {
           if (snapshot.contains(child)) continue;
-          
+
           if (!parent.children.contains(child)) {
             parent.children.add(child);
             child.parents.add(parent);
@@ -253,23 +324,27 @@ class GraphProvider extends ChangeNotifier {
           }
         }
       }
-      
+
       // Clear relationships on the deleted node
       node.parents.clear();
       node.children.clear();
     }
-    
+
     updateDepths(nodesToUpdate.isEmpty ? _rootNodes : nodesToUpdate);
     saveGraph();
   }
 
-  void addLink(CategoryNode parent, CategoryNode child) {
-    _pushUndoSnapshot();
-    if (!parent.children.contains(child)) { parent.children.add(child); }
-    if (!child.parents.contains(parent)) { child.parents.add(parent); }
-    child.parents.isEmpty ? _rootNodes.add(child) : _rootNodes.remove(child);
-    updateDepths({child});
-    saveGraph();
+  void addLink(CategoryNode parent, CategoryNode child, {bool silent = false}) {
+    if (!silent) _pushUndoSnapshot();
+    if (parent.children.add(child)) {
+      child.parents.add(parent);
+      _rootNodes.remove(child);
+      updateDepths(_rootNodes);
+      if (!silent) {
+        notifyListeners();
+        saveGraph();
+      }
+    }
   }
 
   void removeLink(CategoryNode nodeA, CategoryNode nodeB) {
@@ -278,24 +353,61 @@ class GraphProvider extends ChangeNotifier {
     CategoryNode? child;
 
     if (nodeA.children.contains(nodeB)) {
-      parent = nodeA; child = nodeB;
+      parent = nodeA;
+      child = nodeB;
     } else if (nodeB.children.contains(nodeA)) {
-      parent = nodeB; child = nodeA;
+      parent = nodeB;
+      child = nodeA;
     }
 
     if (parent != null && child != null) {
       parent.children.remove(child);
       child.parents.remove(parent);
-      if (child.parents.isEmpty) { _rootNodes.add(child); }
+      if (child.parents.isEmpty) {
+        _rootNodes.add(child);
+      }
       updateDepths({child});
       saveGraph();
     }
   }
 
-  void updateNode(CategoryNode node, {String? name, String? description}) {
+  void updateNode(
+    CategoryNode node, {
+    String? name,
+    String? description,
+    bool? isCompleted,
+    TaskPriority? priority,
+    int? weight,
+    DateTime? dueDate,
+    int? colorValue,
+  }) {
     _pushUndoSnapshot();
-    if (name != null) { node.name = name; }
-    if (description != null) { node.description = description; }
+    if (name != null) {
+      node.name = name;
+    }
+
+    if (description != null) {
+      node.description = description;
+    }
+
+    if (isCompleted != null) {
+      node.isCompleted = isCompleted;
+    }
+
+    if (priority != null) {
+      node.priority = priority;
+    }
+
+    if (weight != null) {
+      node.weight = weight;
+    }
+
+    if (colorValue != null) {
+      node.colorValue = colorValue == -1 ? null : colorValue;
+    }
+
+    node.dueDate = dueDate ?? node.dueDate;
+
     notifyListeners();
     saveGraph();
   }
@@ -306,18 +418,24 @@ class GraphProvider extends ChangeNotifier {
 
     while (queue.isNotEmpty) {
       final node = queue.removeFirst();
-      if (descendants.add(node)) { queue.addAll(node.children); }
+      if (descendants.add(node)) {
+        queue.addAll(node.children);
+      }
     }
 
-    for (CategoryNode node in descendants) { node.depth = null; }
-    for (CategoryNode node in descendants) { _computeDepth(node, {}); }
+    for (CategoryNode node in descendants) {
+      node.depth = null;
+    }
+    for (CategoryNode node in descendants) {
+      _computeDepth(node, {});
+    }
 
     notifyListeners();
   }
 
   int _computeDepth(CategoryNode node, Set<CategoryNode> visiting) {
     if (node.depth != null) return node.depth!;
-    
+
     if (visiting.contains(node)) return 0;
     if (node.parents.isEmpty) {
       node.depth = 0;
@@ -325,26 +443,28 @@ class GraphProvider extends ChangeNotifier {
     }
 
     visiting.add(node);
-    
+
     int maxDepth = 0;
     for (CategoryNode parent in node.parents) {
       int d = _computeDepth(parent, visiting);
-      if (d > maxDepth) { maxDepth = d; }
+      if (d > maxDepth) {
+        maxDepth = d;
+      }
     }
-    
+
     visiting.remove(node);
-    
+
     node.depth = maxDepth + 1;
     return node.depth!;
   }
 
   bool wouldCreateCycle(CategoryNode parent, CategoryNode child) {
     if (parent == child) return true;
-    
+
     Set<CategoryNode> visiting = {};
     List<CategoryNode> queue = [child];
     int head = 0;
-    
+
     while (head < queue.length) {
       CategoryNode current = queue[head++];
       if (current == parent) return true;
@@ -358,7 +478,7 @@ class GraphProvider extends ChangeNotifier {
   Set<CategoryNode> getAllNodes() {
     Set<CategoryNode> allNodes = {};
     List<CategoryNode> queue = List.from(_rootNodes);
-    
+
     int i = 0;
     while (i < queue.length) {
       CategoryNode node = queue[i++];
@@ -395,32 +515,43 @@ class GraphProvider extends ChangeNotifier {
     return visited.length;
   }
 
-  void importNodes(List<Map<String, dynamic>> nodesData, List<Map<String, String>> edgesData) {
+  void importNodes(
+    List<Map<String, dynamic>> nodesData,
+    List<Map<String, String>> edgesData,
+  ) {
     _pushUndoSnapshot();
     Map<String, CategoryNode> directory = {};
-    
+
     for (var json in nodesData) {
       var node = CategoryNode(
         json['name'].toString(),
         uuid: json['uuid']?.toString(),
         description: json['description']?.toString(),
         sortIndex: (json['sortIndex'] as num?)?.toInt(),
+        isCompleted: json['isCompleted'] as bool? ?? false,
+        priority: TaskPriority.values.firstWhere(
+          (p) => p.name == (json['priority'] ?? 'low'),
+          orElse: () => TaskPriority.low,
+        ),
+        weight: (json['weight'] as num?)?.toInt(),
+        dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
+        colorValue: json['colorValue'] as int?,
       );
       directory[node.uuid] = node;
     }
-    
+
     for (var edge in edgesData) {
       String parentId = edge['parent']!;
       String childId = edge['child']!;
       var parentNode = directory[parentId];
       var childNode = directory[childId];
-      
+
       if (parentNode != null && childNode != null) {
         parentNode.children.add(childNode);
         childNode.parents.add(parentNode);
       }
     }
-    
+
     Set<CategoryNode> newRoots = {};
     for (var node in directory.values) {
       if (node.parents.isEmpty) {
@@ -428,14 +559,18 @@ class GraphProvider extends ChangeNotifier {
         _rootNodes.add(node);
       }
     }
-    
+
     updateDepths(newRoots.isEmpty ? Set.from(directory.values) : newRoots);
     saveGraph();
   }
 
   /// Reorders nodes within a column by inserting [nodesToMove] at [gapIndex]
   /// in the provided [columnNodes] list, then reassigning sortIndex values.
-  void reorderNodes(List<CategoryNode> nodesToMove, int gapIndex, List<CategoryNode> columnNodes) {
+  void reorderNodes(
+    List<CategoryNode> nodesToMove,
+    int gapIndex,
+    List<CategoryNode> columnNodes,
+  ) {
     if (nodesToMove.isEmpty || columnNodes.isEmpty) return;
     _pushUndoSnapshot();
 
@@ -444,9 +579,14 @@ class GraphProvider extends ChangeNotifier {
       ..sort((a, b) => (a.sortIndex ?? 0).compareTo(b.sortIndex ?? 0));
 
     // Build new column order
-    final remaining = columnNodes.where((n) => !nodesToMove.contains(n)).toList();
+    final remaining = columnNodes
+        .where((n) => !nodesToMove.contains(n))
+        .toList();
     // Adjust insertion index: account for removed nodes that were before the gap
-    final removedBefore = columnNodes.take(gapIndex).where((n) => nodesToMove.contains(n)).length;
+    final removedBefore = columnNodes
+        .take(gapIndex)
+        .where((n) => nodesToMove.contains(n))
+        .length;
     final insertIndex = (gapIndex - removedBefore).clamp(0, remaining.length);
     remaining.insertAll(insertIndex, orderedToMove);
 
@@ -502,7 +642,7 @@ class GraphProvider extends ChangeNotifier {
   }
 
   void _floodFillRecursive(CategoryNode node, Set<CategoryNode> visited) {
-    if (visited.contains(node)) return; 
+    if (visited.contains(node)) return;
     visited.add(node);
     _selectedNodes.add(node);
     for (var parent in node.parents) {
@@ -531,5 +671,12 @@ class GraphProvider extends ChangeNotifier {
         _addDescendants(child, visited);
       }
     }
+  }
+
+  void executeBatch(void Function() action) {
+    _pushUndoSnapshot();
+    action();
+    notifyListeners();
+    saveGraph();
   }
 }

@@ -9,16 +9,10 @@ class WorkflowMeta {
 
   WorkflowMeta({required this.id, required this.name});
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-      };
+  Map<String, dynamic> toJson() => {'id': id, 'name': name};
 
   factory WorkflowMeta.fromJson(Map<String, dynamic> json) {
-    return WorkflowMeta(
-      id: json['id'],
-      name: json['name'],
-    );
+    return WorkflowMeta(id: json['id'], name: json['name']);
   }
 }
 
@@ -36,7 +30,9 @@ class WorkflowsProvider extends ChangeNotifier {
 
   GraphProvider? get currentGraph {
     if (!_isLoaded) return null;
-    if (_currentWorkflowId == null || !_graphProviders.containsKey(_currentWorkflowId)) return null;
+    if (_currentWorkflowId == null ||
+        !_graphProviders.containsKey(_currentWorkflowId))
+      return null;
     return _graphProviders[_currentWorkflowId!];
   }
 
@@ -61,7 +57,7 @@ class WorkflowsProvider extends ChangeNotifier {
     } else {
       createNewWorkflow();
     }
-    
+
     _isLoaded = true;
     notifyListeners();
   }
@@ -72,19 +68,17 @@ class WorkflowsProvider extends ChangeNotifier {
 
   void _ensureGraphProvider(String id) {
     if (!_graphProviders.containsKey(id)) {
-      _graphProviders[id] = GraphProvider(
-        id: id,
-      );
+      _graphProviders[id] = GraphProvider(id: id);
     }
   }
 
   String createNewWorkflow({bool switchToNew = true}) {
     String id = const Uuid().v4();
     String name = "New Workflow";
-    
+
     _workflows.add(WorkflowMeta(id: id, name: name));
     _ensureGraphProvider(id);
-    
+
     if (switchToNew) {
       _currentWorkflowId = id;
     }
@@ -107,7 +101,7 @@ class WorkflowsProvider extends ChangeNotifier {
     if (index != -1) {
       _workflows.removeAt(index);
       _graphProviders.remove(id);
-      
+
       if (_workflows.isEmpty) {
         // If entirely empty, create a new one
         createNewWorkflow();
@@ -118,7 +112,7 @@ class WorkflowsProvider extends ChangeNotifier {
       }
       _saveWorkflows();
       notifyListeners();
-      
+
       // Clean up SharedPreferences for deleted workflow
       _storageService.deleteGraphData(id);
     }
@@ -134,7 +128,9 @@ class WorkflowsProvider extends ChangeNotifier {
   }
 
   Future<WorkflowMeta?> importWorkflow(String jsonString) async {
-    WorkflowMeta? newWorkflow = await _storageService.importWorkflow(jsonString);
+    WorkflowMeta? newWorkflow = await _storageService.importWorkflow(
+      jsonString,
+    );
     if (newWorkflow != null) {
       _workflows.add(newWorkflow);
       _currentWorkflowId = newWorkflow.id;
@@ -148,7 +144,9 @@ class WorkflowsProvider extends ChangeNotifier {
   /// Imports one or more workflows from a JSON string (supports multi-workflow format).
   /// Returns the number of successfully imported workflows.
   Future<int> importWorkflows(String jsonString) async {
-    List<WorkflowMeta> newWorkflows = await _storageService.importWorkflows(jsonString);
+    List<WorkflowMeta> newWorkflows = await _storageService.importWorkflows(
+      jsonString,
+    );
     if (newWorkflows.isNotEmpty) {
       _workflows.addAll(newWorkflows);
       _currentWorkflowId = newWorkflows.first.id;
@@ -162,8 +160,9 @@ class WorkflowsProvider extends ChangeNotifier {
   }
 
   void moveNodes(Set<CategoryNode> nodesToMove, String targetWorkflowId) {
-    if (_currentWorkflowId == null || _currentWorkflowId == targetWorkflowId) return;
-    
+    if (_currentWorkflowId == null || _currentWorkflowId == targetWorkflowId)
+      return;
+
     final sourceGraph = currentGraph;
     final targetGraph = _graphProviders[targetWorkflowId];
     if (sourceGraph == null || targetGraph == null) return;
@@ -183,7 +182,7 @@ class WorkflowsProvider extends ChangeNotifier {
     // We'll store node data and internal edges (links between nodes in allToMove)
     List<Map<String, dynamic>> nodesData = [];
     List<Map<String, String>> edgesData = [];
-    
+
     Set<String> movedUuids = allToMove.map((n) => n.uuid).toSet();
 
     for (var node in allToMove) {
@@ -192,13 +191,15 @@ class WorkflowsProvider extends ChangeNotifier {
         'name': node.name,
         'description': node.description,
         'sortIndex': node.sortIndex,
+        'isCompleted': node.isCompleted,
+        'priority': node.priority.name,
+        'weight': node.weight,
+        'dueDate': node.dueDate?.toIso8601String(),
+        'colorValue': node.colorValue,
       });
       for (var child in node.children) {
         if (movedUuids.contains(child.uuid)) {
-          edgesData.add({
-            'parent': node.uuid,
-            'child': child.uuid,
-          });
+          edgesData.add({'parent': node.uuid, 'child': child.uuid});
         }
       }
     }
@@ -208,7 +209,7 @@ class WorkflowsProvider extends ChangeNotifier {
 
     // 4. Add to target
     targetGraph.importNodes(nodesData, edgesData);
-    
+
     // 5. Cleanup
     notifyListeners();
   }
